@@ -3,6 +3,7 @@ name = "net_hex"
 version = "0.1.0"
 authors = ["jack"]
 edition = "2018"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,3 +14,6 @@ clap = "2.33.0"
 
 [dependencies.pnet]
 version = "0.22.0"
+
+[profile.release]
+lto = true
