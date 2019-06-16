@@ -6,8 +6,6 @@ use clap::{Arg, App, value_t};
 
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, NetworkInterface, Config};
-// use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
-// use pnet::packet::{MutablePacket, Packet};
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -34,7 +32,7 @@ fn main() {
                  .short("t")
                  .long("timeout")
                  .takes_value(true)
-                 .help("Timeout before exiting the program. Default no timeout"))
+                 .help("Time before exiting the program"))
         .arg(Arg::with_name("count")
                  .short("c")
                  .long("count")
@@ -93,7 +91,7 @@ fn main() {
             Err(e) => {println!("{}", e);
                        std::process::exit(1);},
         };
-        println!("Sending bytes; {:X?}", bytes);
+        println!("Sending bytes: {:X?}", bytes);
         tx.send_to(&bytes, None);
     }
 
