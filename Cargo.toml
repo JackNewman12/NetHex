@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 hexplay = "*"
+hex = "0.3.2"
+clap = "2.33.0"
 
 [dependencies.pnet]
 version = "0.22.0"
