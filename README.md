@@ -2,6 +2,7 @@
 A small rust utility for dumping data-layer network traffic
 
 [![Build Status](https://travis-ci.org/JackNewman12/NetHex.svg?branch=master)](https://travis-ci.org/JackNewman12/NetHex)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_shield)
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 ```
@@ -46,6 +47,6 @@ Followed by a hex string of the bytes to transmit.
 00000020  00 1E F3 B1 D5 CD A7 29 7E 51 D6 F6 B7 DE 50 10  | .▲≤▒╒═º)~Q╕÷╖▐P► |
 00000030  00 80 DF 02 00 00       
 ```
-----
 
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_large)
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_large)
