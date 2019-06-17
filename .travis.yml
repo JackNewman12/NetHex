@@ -1,0 +1,12 @@
+language: rust
+rust:
+  - nightly
+cache: cargo
+
+deploy:
+  provider: releases
+  file: "net_hex"
+  skip_cleanup: true
+  overwrite: true
+  on:
+    tags: true
