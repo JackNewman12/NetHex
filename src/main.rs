@@ -80,7 +80,7 @@ fn main() {
         .into_iter()
         .filter(interface_names_match)
         .next()
-        .unwrap();
+        .expect("Could not find the network interface");
 
     // Create a new channel, dealing with layer 2 packets
     let mut datalink_config = Config::default();
@@ -105,7 +105,12 @@ fn main() {
             }
         };
         println!("Sending bytes: {:X?}", bytes);
-        tx.send_to(&bytes, None);
+        let res =  tx.send_to(&bytes, None).unwrap();
+        match res {
+            Ok(res) => println!("{:?}", res),
+            Err(e) => println!("{:?}", e),
+        }
+        // ERROR CHECK
     }
 
     // Now do the Rx part
