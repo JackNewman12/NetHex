@@ -93,7 +93,7 @@ fn main() {
         Err(e) => panic!("Error while creating datalink channel: {:?}", e),
     };
 
-    // Do the Tx part if the user specified bytes
+    // Decode the hex input if the user specified one
     if let Some(arg) = matches.value_of("bytes") {
         extern crate hex;
         use hex::FromHex;
@@ -104,13 +104,13 @@ fn main() {
                 std::process::exit(1);
             }
         };
+        // Transmit those bytes
         println!("Sending bytes: {:X?}", bytes);
         let res =  tx.send_to(&bytes, None).unwrap();
-        match res {
-            Ok(res) => println!("{:?}", res),
-            Err(e) => println!("{:?}", e),
-        }
-        // ERROR CHECK
+        if let Err(error) = res {
+                println!("{:?}", error);
+                std::process::exit(1);
+            };
     }
 
     // Now do the Rx part
