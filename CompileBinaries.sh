@@ -1,6 +1,7 @@
 echo "x64 build"
-cargo build --release
-mv ./target/release/net_hex ./net_hex_x64
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+mv ./target/x86_64-unknown-linux-musl/release/net_hex ./net_hex_x64
 strip ./net_hex_x64
 
 echo "ARM build"
