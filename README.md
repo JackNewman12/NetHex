@@ -2,6 +2,7 @@
 A small rust utility for dumping data-layer network traffic
 
 [![Build Status](https://travis-ci.org/JackNewman12/NetHex.svg?branch=master)](https://travis-ci.org/JackNewman12/NetHex)
+![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 ```
 ./net_hex --help
