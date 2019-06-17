@@ -2,6 +2,9 @@
 # will have compiled files and executables
 /target/
 
+# MUSL stuff
+/armv7*
+
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 Cargo.lock
@@ -16,3 +19,8 @@ Cargo.lock
 
 /target
 #**/*.rs.bk
+
+
+# The built binaries
+net_hex_arm
+net_hex_x64
