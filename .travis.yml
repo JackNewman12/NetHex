@@ -1,19 +1,9 @@
 language: rust
 cache: cargo
-
-matrix:
-  - os: linux
-        rust: nightly
-        env: TARGET=x86_64-unknown-linux-musl
-  - os: linux
-        rust: nightly
-        env: TARGET=arm-unknown-linux-musleabihf
-
-install:
-  - cargo install cross
-
-script:
-  - cross build --target $TARGET --release --verbose
+rust:
+  - nightly
+os: 
+  - linux
 
 deploy:
   provider: releases
