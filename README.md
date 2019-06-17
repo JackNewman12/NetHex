@@ -1,5 +1,6 @@
 # NetHex
 A small rust utility for dumping data-layer network traffic
+[![Build Status](https://travis-ci.org/JackNewman12/NetHex.svg?branch=master)](https://travis-ci.org/JackNewman12/NetHex)
 
 ```
 ./net_hex --help

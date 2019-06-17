@@ -9,8 +9,11 @@ matrix:
         rust: nightly
         env: TARGET=arm-unknown-linux-musleabihf
 
+install:
+  - cargo install cross
+
 script:
-  - cargo build --target $TARGET --release --verbose
+  - cross build --target $TARGET --release --verbose
 
 deploy:
   provider: releases
