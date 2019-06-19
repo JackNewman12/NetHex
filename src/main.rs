@@ -1,11 +1,11 @@
-extern crate clap;
+extern crate hex;
 extern crate hexplay;
 extern crate pnet;
 
-use clap::{value_t, App, Arg};
-
+use hex::FromHex;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, Config, NetworkInterface};
+use structopt::StructOpt;
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -21,72 +21,58 @@ fn print_interfaces() {
     }
 }
 
+/// A small utility for reading / writing directly to a network interface
+#[derive(StructOpt, Debug)]
+#[structopt(
+    name = "NetHex",
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
+)]
+struct Opt {
+    /// Number of packet to receive before exiting
+    #[structopt(short = "c", long = "count", default_value = "-1")]
+    count: i64,
+
+    /// Number of packet to receive before exiting
+    #[structopt(short = "t", long = "timeout")]
+    timeout: Option<u64>,
+
+    /// The network interface to listen on
+    #[structopt(name = "interface")]
+    interface: Option<String>,
+
+    /// The hex bytes to send over the network
+    #[structopt(name = "bytes")]
+    bytes: Option<String>,
+}
+
 // Invoke as echo <interface name>
 fn main() {
-    let matches = App::new("NetHex")
-        .version("0.1.0")
-        .author("Jack Newman")
-        .about("A small utility for reading / writing directly to a network interface")
-        .arg(
-            Arg::with_name("timeout")
-                .short("t")
-                .long("timeout")
-                .takes_value(true)
-                .help("Time before exiting the program"),
-        )
-        .arg(
-            Arg::with_name("count")
-                .short("c")
-                .long("count")
-                .takes_value(true)
-                .help("Number of packet to receive before exiting")
-                .default_value("-1"),
-        )
-        .arg(
-            Arg::with_name("list")
-                .short("l")
-                .long("list")
-                .help("List network interfaces"),
-        )
-        .arg(
-            Arg::with_name("interface")
-                .help("The network interface to send/read from")
-                .required_unless("list"),
-        )
-        .arg(
-            Arg::with_name("bytes")
-                .help("A hex string of raw bytes to send to the interface e.g. 11EE22FF"),
-        )
-        .get_matches();
+    let opt = Opt::from_args();
+    // println!("{:?}", opt);
 
-    // println!("{:?}", matches);
-    if matches.is_present("list") {
+    // If the user did not specify any interface. List some to be helpful
+    if let None = opt.interface {
         print_interfaces();
         std::process::exit(0);
     };
 
-    let rx_timeout = value_t!(matches, "timeout", u64)
-        .ok()
-        .map(|time| Duration::from_secs(time));
-    let mut rx_countlimit = value_t!(matches, "count", i64).unwrap();
-
-    // Grab the input interface. No error checking as clap will exit if it does not exist
-    let interface_name = matches.value_of("interface").unwrap();
+    let rx_timeout = opt.timeout.map(|time| Duration::from_secs(time));
+    let mut rx_countlimit = opt.count;
 
     // Find the network interface with the provided name
-    let interface_names_match = |iface: &NetworkInterface| iface.name == interface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces
         .into_iter()
-        .filter(interface_names_match)
+        // Safe to unwrap since print_interfaces will exit above
+        .filter(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
         .next()
         .expect("Could not find the network interface");
 
-    // Create a new channel, dealing with layer 2 packets
-    let mut datalink_config = Config::default();
     // Set the timeout of the socket read to 10ms
-    datalink_config.read_timeout = Some(std::time::Duration::new(0, 1e7 as u32)); 
+    let mut datalink_config = Config::default();
+    datalink_config.read_timeout = Some(std::time::Duration::new(0, 1e7 as u32));
 
+    // Create a new channel, dealing with layer 2 packets
     let (mut tx, mut rx) = match datalink::channel(&interface, datalink_config) {
         Ok(Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unhandled channel type"),
@@ -94,9 +80,7 @@ fn main() {
     };
 
     // Decode the hex input if the user specified one
-    if let Some(arg) = matches.value_of("bytes") {
-        extern crate hex;
-        use hex::FromHex;
+    if let Some(arg) = opt.bytes {
         let bytes = match Vec::from_hex(arg) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -106,11 +90,11 @@ fn main() {
         };
         // Transmit those bytes
         println!("Sending bytes: {:X?}", bytes);
-        let res =  tx.send_to(&bytes, None).unwrap();
+        let res = tx.send_to(&bytes, None).unwrap();
         if let Err(error) = res {
-                println!("{:?}", error);
-                std::process::exit(1);
-            };
+            println!("{:?}", error);
+            std::process::exit(1);
+        };
     }
 
     // Now do the Rx part
