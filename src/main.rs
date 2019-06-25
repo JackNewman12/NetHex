@@ -1,4 +1,5 @@
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate hex;
 extern crate hexplay;
 extern crate pnet;
@@ -32,11 +33,11 @@ fn print_interfaces() {
 struct Opt {
     /// Number of packet to receive before exiting
     #[structopt(short = "c", long = "count", default_value = "-1")]
-    count: i64,
+    rx_count: i64,
 
     /// Number of packet to receive before exiting
     #[structopt(short = "t", long = "timeout")]
-    timeout: Option<u64>,
+    rx_timeout: Option<u64>,
 
     /// Number of packet to transmit before exiting
     #[structopt(short = "s", long = "send", default_value = "1")]
@@ -66,9 +67,6 @@ fn main() {
         std::process::exit(0);
     };
 
-    let rx_timeout = opt.timeout.map(Duration::from_secs);
-    let mut rx_countlimit = opt.count;
-
     // Find the network interface with the provided name
     let interfaces = datalink::interfaces();
     let interface = interfaces
@@ -88,6 +86,9 @@ fn main() {
         Err(e) => panic!("Error while creating datalink channel: {:?}", e),
     };
 
+    // Progressing to rx and tx steps. Add a waitgroup for them
+    let wg = crossbeam_utils::sync::WaitGroup::new();
+
     // Decode the hex input if the user specified one
     if let Some(arg) = opt.bytes {
         let bytes = match Vec::from_hex(arg) {
@@ -100,6 +101,7 @@ fn main() {
 
         let rate = opt.tx_rate;
         let count = opt.tx_send;
+        let wg = wg.clone();
         thread::spawn(move || {
             // Transmit those bytes
             let ticker = rate
@@ -117,33 +119,43 @@ fn main() {
                     tick.recv().expect("Ticker died?");
                 }
             }
+            drop(wg);
         });
     }
 
-    // Now do the Rx part
-    let now = Instant::now();
-    while rx_countlimit != 0 {
-        match rx.next() {
-            Ok(packet) => {
-                println!("----- Recv Packet -----");
-                use hexplay::HexViewBuilder;
-                let view = HexViewBuilder::new(packet).row_width(16).finish();
-                println!("{}", view);
-                rx_countlimit -= 1;
+    {
+        let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
+        let mut rx_countlimit = opt.rx_count;
+        let wg = wg.clone();
+        // Now do the Rx part
+        thread::spawn(move || {
+            let now = Instant::now();
+            while rx_countlimit != 0 {
+                match rx.next() {
+                    Ok(packet) => {
+                        println!("Recv Packet");
+                        use hexplay::HexViewBuilder;
+                        let view = HexViewBuilder::new(packet).row_width(16).finish();
+                        println!("{}", view);
+                        rx_countlimit -= 1;
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
+                        // Timeout errors are fine. Ignore.
+                    }
+                    Err(e) => {
+                        // If any other error occurs, we can handle it here
+                        panic!("An error occurred while reading: {:?}", e);
+                    }
+                }
+                if let Some(rx_timeout) = rx_timeout {
+                    // If there is a timeout enabled. Check it
+                    if now.elapsed() > rx_timeout {
+                        std::process::exit(0);
+                    }
+                }
             }
-            Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
-                // Timeout errors are fine. Ignore.
-            }
-            Err(e) => {
-                // If any other error occurs, we can handle it here
-                panic!("An error occurred while reading: {:?}", e);
-            }
-        }
-        if let Some(rx_timeout) = rx_timeout {
-            // If there is a timeout enabled. Check it
-            if now.elapsed() > rx_timeout {
-                std::process::exit(0);
-            }
-        }
+            drop(wg);
+        });
     }
+    wg.wait();
 }
