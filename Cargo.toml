@@ -11,6 +11,11 @@ license = "MIT"
 hexplay = "*"
 hex = "0.3.2"
 structopt = "0.2"
+nom = "*"
+crossbeam-channel = "0.3.8"
+tui = "0.6.1"
+termion = "1.5"
+rand = "*"
 
 [dependencies.pnet]
 version = "0.22.0"

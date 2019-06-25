@@ -1,3 +1,4 @@
+extern crate crossbeam_channel;
 extern crate hex;
 extern crate hexplay;
 extern crate pnet;
@@ -8,6 +9,7 @@ use pnet::datalink::{self, Config, NetworkInterface};
 use structopt::StructOpt;
 
 use std::io;
+use std::thread;
 use std::time::{Duration, Instant};
 
 fn print_interfaces() {
@@ -36,6 +38,14 @@ struct Opt {
     #[structopt(short = "t", long = "timeout")]
     timeout: Option<u64>,
 
+    /// Number of packet to transmit before exiting
+    #[structopt(short = "s", long = "send", default_value = "1")]
+    tx_send: u64,
+
+    /// Rate to transmit packets Num per Second
+    #[structopt(short = "r", long = "rate")]
+    tx_rate: Option<f64>,
+
     /// The network interface to listen on
     #[structopt(name = "interface")]
     interface: Option<String>,
@@ -51,12 +61,12 @@ fn main() {
     // println!("{:?}", opt);
 
     // If the user did not specify any interface. List some to be helpful
-    if let None = opt.interface {
+    if opt.interface.is_none() {
         print_interfaces();
         std::process::exit(0);
     };
 
-    let rx_timeout = opt.timeout.map(|time| Duration::from_secs(time));
+    let rx_timeout = opt.timeout.map(Duration::from_secs);
     let mut rx_countlimit = opt.count;
 
     // Find the network interface with the provided name
@@ -64,13 +74,12 @@ fn main() {
     let interface = interfaces
         .into_iter()
         // Safe to unwrap since print_interfaces will exit above
-        .filter(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
-        .next()
+        .find(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
         .expect("Could not find the network interface");
 
     // Set the timeout of the socket read to 10ms
     let mut datalink_config = Config::default();
-    datalink_config.read_timeout = Some(std::time::Duration::new(0, 1e7 as u32));
+    datalink_config.read_timeout = Some(Duration::from_millis(10));
 
     // Create a new channel, dealing with layer 2 packets
     let (mut tx, mut rx) = match datalink::channel(&interface, datalink_config) {
@@ -88,13 +97,27 @@ fn main() {
                 std::process::exit(1);
             }
         };
-        // Transmit those bytes
-        println!("Sending bytes: {:X?}", bytes);
-        let res = tx.send_to(&bytes, None).unwrap();
-        if let Err(error) = res {
-            println!("{:?}", error);
-            std::process::exit(1);
-        };
+
+        let rate = opt.tx_rate;
+        let count = opt.tx_send;
+        thread::spawn(move || {
+            // Transmit those bytes
+            let ticker = rate
+                .map(|rate| crossbeam_channel::tick(Duration::from_micros((1e6 / rate) as u64)));
+
+            for _ in 0..count {
+                println!("Sending bytes: {:X?}", bytes);
+                let res = tx.send_to(&bytes, None).unwrap();
+                if let Err(error) = res {
+                    println!("{:?}", error);
+                    std::process::exit(1);
+                };
+
+                if let Some(tick) = &ticker {
+                    tick.recv().expect("Ticker died?");
+                }
+            }
+        });
     }
 
     // Now do the Rx part
