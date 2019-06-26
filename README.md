@@ -6,35 +6,41 @@ A small rust utility for dumping data-layer network traffic
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 ```
-./net_hex --help
-NetHex 0.1.0
-Jack Newman
+NetHex 0.4.1
+Jack Newman jacknewman12@gmail.com
 A small utility for reading / writing directly to a network interface
 
 USAGE:
-    net_hex [FLAGS] [OPTIONS] <interface> [bytes]
+    nethex [OPTIONS] [ARGS]
 
 FLAGS:
     -h, --help       Prints help information
-    -l, --list       List network interfaces
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --count <count>        Number of packet to receive before exiting [default: -1]
-    -t, --timeout <timeout>    Timeout before exiting the program. Default no timeout
+    -c, --count <rx_count>        Number of packet to receive before exiting [default: -1]
+    -t, --timeout <rx_timeout>    Time to receive for before exiting
+    -r, --rate <tx_rate>          Rate to transmit packets Num per Second
+    -s, --send <tx_send>          Number of packet to transmit before exiting [default: 1]
 
 ARGS:
-    <interface>    The network interface to send/read from
-    <bytes>        A hex string of raw bytes to send to the interface e.g. 11EE22FF
+    <interface>    The network interface to listen on
+    <bytes>        The hex bytes to send over the network
 ```
 
 
 ## Sending a packet
 ```
-./net_hex eth0 112233445566778899AABBCCDDEEFF -c 0
+./net_hex eth0 112233445566778899AABBCCDDEEFF -c 0 -s 100 -r 50
 Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
+Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
+Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
+.. etc ..
 ```
-`--count 0` to not listen after transmitting
+* `--count 0` to not listen after transmitting
+* `--send 100` send 100 of these packets
+* `--rate 50` send 50 per second
+
 
 Followed by a hex string of the bytes to transmit.
 
@@ -47,6 +53,7 @@ Followed by a hex string of the bytes to transmit.
 00000020  00 1E F3 B1 D5 CD A7 29 7E 51 D6 F6 B7 DE 50 10  | .▲≤▒╒═º)~Q╕÷╖▐P► |
 00000030  00 80 DF 02 00 00       
 ```
+* `--count 1` only grab one packet before exiting
 
 ## License
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_large)
