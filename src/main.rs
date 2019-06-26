@@ -35,19 +35,19 @@ struct Opt {
     #[structopt(short = "c", long = "count", default_value = "-1")]
     rx_count: i64,
 
-    /// Number of packet to receive before exiting
+    /// Time to receive for before exiting
     #[structopt(short = "t", long = "timeout")]
     rx_timeout: Option<u64>,
 
-    /// Number of packet to transmit before exiting
+    /// Number of packet to transmit
     #[structopt(short = "s", long = "send", default_value = "1")]
     tx_send: u64,
 
-    /// Rate to transmit packets Num per Second
+    /// Rate to transmit (Packets Per Second)
     #[structopt(short = "r", long = "rate")]
     tx_rate: Option<f64>,
 
-    /// The network interface to listen on
+    /// The network interface to use
     #[structopt(name = "interface")]
     interface: Option<String>,
 
@@ -98,6 +98,7 @@ fn main() {
                 std::process::exit(1);
             }
         };
+        println!("Input bytes: {:X?}", bytes);
 
         let rate = opt.tx_rate;
         let count = opt.tx_send;
@@ -108,7 +109,6 @@ fn main() {
                 .map(|rate| crossbeam_channel::tick(Duration::from_micros((1e6 / rate) as u64)));
 
             for _ in 0..count {
-                println!("Sending bytes: {:X?}", bytes);
                 let res = tx.send_to(&bytes, None).unwrap();
                 if let Err(error) = res {
                     println!("{:?}", error);
@@ -133,10 +133,9 @@ fn main() {
             while rx_countlimit != 0 {
                 match rx.next() {
                     Ok(packet) => {
-                        println!("Recv Packet");
                         use hexplay::HexViewBuilder;
                         let view = HexViewBuilder::new(packet).row_width(16).finish();
-                        println!("{}", view);
+                        println!("Recv Packet\n{}", view);
                         rx_countlimit -= 1;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
