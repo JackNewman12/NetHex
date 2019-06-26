@@ -1,6 +1,6 @@
 [package]
 name = "net_hex"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Jack Newman jacknewman12@gmail.com"]
 edition = "2018"
 license = "MIT"
