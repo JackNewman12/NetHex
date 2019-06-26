@@ -13,6 +13,8 @@ hex = "0.3.2"
 structopt = "0.2"
 crossbeam-channel = "0.3.8"
 crossbeam-utils = "0.6"
+log = "0.4.6"
+env_logger = "0.6.1"
 
 [dependencies.pnet]
 version = "0.22.0"

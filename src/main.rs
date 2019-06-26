@@ -3,7 +3,10 @@ extern crate crossbeam_utils;
 extern crate hex;
 extern crate hexplay;
 extern crate pnet;
+extern crate log;
+extern crate env_logger;
 
+use log::{info, error, debug};
 use hex::FromHex;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, Config, NetworkInterface};
@@ -24,12 +27,12 @@ fn print_interfaces() {
     }
 }
 
-/// A small utility for reading / writing directly to a network interface
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "NetHex",
     raw(setting = "structopt::clap::AppSettings::ColoredHelp")
 )]
+/// A small utility for reading / writing directly to a network interface
 struct Opt {
     /// Number of packet to receive before exiting
     #[structopt(short = "c", long = "count", default_value = "-1")]
@@ -58,8 +61,13 @@ struct Opt {
 
 // Invoke as echo <interface name>
 fn main() {
+    let mut builder = env_logger::Builder::from_env(
+        env_logger::Env::new().filter_or("LOG", "INFO"));
+    builder.target(env_logger::fmt::Target::Stdout);
+    builder.init();
+
     let opt = Opt::from_args();
-    // println!("{:?}", opt);
+    debug!("\n{:#?}", opt);
 
     // If the user did not specify any interface. List some to be helpful
     if opt.interface.is_none() {
@@ -74,7 +82,8 @@ fn main() {
         // Safe to unwrap since print_interfaces will exit above
         .find(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
         .expect("Could not find the network interface");
-
+    debug!("{:#?}", interface);
+    
     // Set the timeout of the socket read to 10ms
     let mut datalink_config = Config::default();
     datalink_config.read_timeout = Some(Duration::from_millis(10));
@@ -94,11 +103,11 @@ fn main() {
         let bytes = match Vec::from_hex(arg) {
             Ok(bytes) => bytes,
             Err(e) => {
-                println!("{}", e);
+                error!("{}", e);
                 std::process::exit(1);
             }
         };
-        println!("Input bytes: {:X?}", bytes);
+        info!("Input bytes: {:X?}", bytes);
 
         let rate = opt.tx_rate;
         let count = opt.tx_send;
@@ -109,9 +118,10 @@ fn main() {
                 .map(|rate| crossbeam_channel::tick(Duration::from_micros((1e6 / rate) as u64)));
 
             for _ in 0..count {
+                debug!("Sending Packet!");
                 let res = tx.send_to(&bytes, None).unwrap();
                 if let Err(error) = res {
-                    println!("{:?}", error);
+                    error!("{:?}", error);
                     std::process::exit(1);
                 };
 
@@ -135,7 +145,9 @@ fn main() {
                     Ok(packet) => {
                         use hexplay::HexViewBuilder;
                         let view = HexViewBuilder::new(packet).row_width(16).finish();
-                        println!("Recv Packet\n{}", view);
+                        // Dont think this makes sense to be part of the logger.
+                        // If you dont want it to print. Kill the thread via -c 0
+                        println!("Recv Packet\n{}", view); 
                         rx_countlimit -= 1;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
@@ -149,6 +161,7 @@ fn main() {
                 if let Some(rx_timeout) = rx_timeout {
                     // If there is a timeout enabled. Check it
                     if now.elapsed() > rx_timeout {
+                        debug!("Rx time limit reached!");
                         std::process::exit(0);
                     }
                 }
