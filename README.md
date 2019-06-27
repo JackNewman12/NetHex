@@ -55,5 +55,13 @@ Followed by a hex string of the bytes to transmit.
 ```
 * `--count 1` only grab one packet before exiting
 
+## Logging
+As of v0.5.0 most of the printing has been turned into an env_logger. While the debugging features are nice, disabling prints allows for a large 20x performance bonus. Logging can be enabled/disable using an enviroment variable. 
+```
+LOG=DEBUG ./nethex .........
+LOG=WARN  ./nethex .........
+```
+
+
 ## License
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_large)
