@@ -1,13 +1,16 @@
 extern crate crossbeam_channel;
 extern crate crossbeam_utils;
+extern crate env_logger;
 extern crate hex;
 extern crate hexplay;
-extern crate pnet;
+extern crate pbr;
 extern crate log;
-extern crate env_logger;
+extern crate pnet;
 
-use log::{info, error, debug};
 use hex::FromHex;
+use pbr::ProgressBar;
+use log::{debug, error, info, log_enabled};
+use log::Level::Info;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, Config, NetworkInterface};
 use structopt::StructOpt;
@@ -61,8 +64,8 @@ struct Opt {
 
 // Invoke as echo <interface name>
 fn main() {
-    let mut builder = env_logger::Builder::from_env(
-        env_logger::Env::new().filter_or("LOG", "INFO"));
+    let mut builder =
+        env_logger::Builder::from_env(env_logger::Env::new().filter_or("LOG", "INFO"));
     builder.target(env_logger::fmt::Target::Stdout);
     builder.init();
 
@@ -83,7 +86,7 @@ fn main() {
         .find(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
         .expect("Could not find the network interface");
     debug!("{:#?}", interface);
-    
+
     // Set the timeout of the socket read to 10ms
     let mut datalink_config = Config::default();
     datalink_config.read_timeout = Some(Duration::from_millis(10));
@@ -114,10 +117,18 @@ fn main() {
         let wg = wg.clone();
         thread::spawn(move || {
             // Transmit those bytes
+
+            // Create some tickers for sending bytes + updating the progress bar
             let ticker = rate
                 .map(|rate| crossbeam_channel::tick(Duration::from_micros((1e6 / rate) as u64)));
+            let barticker = crossbeam_channel::tick(Duration::from_secs(1));
 
-            for _ in 0..count {
+            let mut progress_bar = ProgressBar::new(count);
+            if log_enabled!(Info) {
+                progress_bar.set(0);
+            }
+
+            for idx in 0..count {
                 debug!("Sending Packet!");
                 let res = tx.send_to(&bytes, None).unwrap();
                 if let Err(error) = res {
@@ -125,10 +136,14 @@ fn main() {
                     std::process::exit(1);
                 };
 
+                if barticker.try_recv().is_ok() && log_enabled!(Info){
+                    progress_bar.set(idx);
+                }
                 if let Some(tick) = &ticker {
                     tick.recv().expect("Ticker died?");
                 }
             }
+            progress_bar.finish();
             drop(wg);
         });
     }
@@ -147,7 +162,7 @@ fn main() {
                         let view = HexViewBuilder::new(packet).row_width(16).finish();
                         // Dont think this makes sense to be part of the logger.
                         // If you dont want it to print. Kill the thread via -c 0
-                        println!("Recv Packet\n{}", view); 
+                        println!("Recv Packet\n{}", view);
                         rx_countlimit -= 1;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
