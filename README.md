@@ -6,26 +6,31 @@ A small rust utility for dumping data-layer network traffic
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 ```
-NetHex 0.4.1
+./net_hex --help
+NetHex 0.7.0
 Jack Newman jacknewman12@gmail.com
 A small utility for reading / writing directly to a network interface
 
 USAGE:
-    nethex [OPTIONS] [ARGS]
+    net_hex [OPTIONS] [ARGS]
 
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --count <rx_count>        Number of packet to receive before exiting [default: -1]
-    -t, --timeout <rx_timeout>    Time to receive for before exiting
-    -r, --rate <tx_rate>          Rate to transmit packets Num per Second
-    -s, --send <tx_send>          Number of packet to transmit before exiting [default: 1]
+    -b, --blacklist <rx_blacklist_filter>    Only print Rx packets that do NOT match this regex filter
+    -c, --count <rx_count>                   Number of packet to receive before exiting [default: -1]
+    -f, --filter <rx_filter>                 Only print Rx packets that match this regex filter
+    -t, --timeout <rx_timeout>               Time to receive for before exiting
+    -r, --rate <tx_rate>                     Rate to transmit (Packets Per Second)
+    -s, --send <tx_send>                     Number of packet to transmit [default: 1]
 
 ARGS:
-    <interface>    The network interface to listen on
+    <interface>    The network interface to use
     <bytes>        The hex bytes to send over the network
+
+
 ```
 
 
@@ -54,6 +59,20 @@ Followed by a hex string of the bytes to transmit.
 00000030  00 80 DF 02 00 00       
 ```
 * `--count 1` only grab one packet before exiting
+
+### Filtering
+Whitelist and blacklist filtering can be applied to the hex data. The filter is performed on the hex string only, not the ASCII area.
+Whitespace and newlines are ignored in the filter.
+
+* `--filter "77 77 88889999 AA"` Must contain this hex data. Whitespace ignored. Notice how this match crosses both lines
+* `--blacklist "123456ABC"` Must not contain this hex data
+```
+ ./net_hex lo -f "77 77 88889999 AA" -c 1
+[2019-06-30T08:17:24Z INFO  net_hex] Recv Packet
+00000000  11 11 22 22 33 33 44 44 55 55 66 66 77 77 88 88  | ◄◄""33DDUUffwwêê |
+00000010  99 99 AA AA BB BB CC CC DD DD EE EE FF FF        | ÖÖ¬¬╗╗╠╠▌▌εε..   |
+
+```
 
 ## Logging
 As of v0.5.0 most of the printing has been turned into an env_logger. While the debugging features are nice, disabling prints allows for a large 20x performance bonus. Logging can be enabled/disable using an enviroment variable. 
