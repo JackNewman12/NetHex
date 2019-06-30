@@ -12,6 +12,7 @@ publish = false
 hexplay = "*"
 hex = "0.3.2"
 structopt = "0.2"
+regex = "1.1.7"
 crossbeam-utils = "0.6"
 log = "0.4.6"
 env_logger = "0.6.1"
