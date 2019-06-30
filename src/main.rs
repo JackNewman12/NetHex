@@ -195,17 +195,17 @@ fn main() {
                     Ok(packet) => {
                         // Convert the bytes into a basic hex string so that regex filters
                         // are easy to write for it
-                        let packetString = hex::encode(packet);
+                        let hex_string = hex::encode(packet);
 
                         // Match the whitelist if set
                         if let Some(rx_filter) = &rx_filter {
-                            if !rx_filter.is_match(&format!("{}", packetString)) {
+                            if !rx_filter.is_match(&hex_string.to_string()) {
                                 continue;
                             }
                         }
                         // Do not match the blackist if set
                         if let Some(rx_blacklist_filter) = &rx_blacklist_filter {
-                            if rx_blacklist_filter.is_match(&format!("{}", packetString)) {
+                            if rx_blacklist_filter.is_match(&hex_string.to_string()) {
                                 continue;
                             }
                         }
