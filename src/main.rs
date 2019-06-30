@@ -1,16 +1,14 @@
-extern crate crossbeam_channel;
-extern crate crossbeam_utils;
 extern crate env_logger;
 extern crate hex;
 extern crate hexplay;
-extern crate pbr;
 extern crate log;
+extern crate pbr;
 extern crate pnet;
 
 use hex::FromHex;
-use pbr::ProgressBar;
-use log::{debug, error, info, log_enabled};
 use log::Level::Info;
+use log::{debug, error, info, log_enabled};
+use pbr::ProgressBar;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, Config, NetworkInterface};
 use structopt::StructOpt;
@@ -119,15 +117,14 @@ fn main() {
             // Transmit those bytes
 
             // Create some tickers for sending bytes + updating the progress bar
-            let ticker = rate
-                .map(|rate| crossbeam_channel::tick(Duration::from_micros((1e6 / rate) as u64)));
-            let barticker = crossbeam_channel::tick(Duration::from_secs(1));
-
+            let rate = rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
             let mut progress_bar = ProgressBar::new(count);
             if log_enabled!(Info) {
                 progress_bar.set(0);
+                progress_bar.set_max_refresh_rate(Some(Duration::from_millis(500)));
             }
 
+            let mut now = Instant::now();
             for idx in 0..count {
                 debug!("Sending Packet!");
                 let res = tx.send_to(&bytes, None).unwrap();
@@ -136,12 +133,15 @@ fn main() {
                     std::process::exit(1);
                 };
 
-                if barticker.try_recv().is_ok() && log_enabled!(Info){
+                if log_enabled!(Info) {
                     progress_bar.set(idx);
                 }
-                if let Some(tick) = &ticker {
-                    tick.recv().expect("Ticker died?");
-                }
+                if let Some(rate) = rate {
+                    if let Some(sleep) = rate.checked_sub(now.elapsed()) {
+                        thread::sleep(sleep);
+                    }
+                    now += rate;
+                };
             }
             progress_bar.finish();
             drop(wg);
