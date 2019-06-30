@@ -7,6 +7,7 @@ extern crate pnet;
 extern crate regex;
 
 use hex::FromHex;
+use hexplay::HexViewBuilder;
 use log::Level::Info;
 use log::{debug, error, info, log_enabled};
 use pbr::ProgressBar;
@@ -165,6 +166,7 @@ fn main() {
         let rx_filter = opt.rx_filter.map(|filter| {
             RegexBuilder::new(&filter)
                 .case_insensitive(true)
+                .ignore_whitespace(true)
                 .multi_line(true)
                 .dot_matches_new_line(true)
                 .build()
@@ -174,6 +176,7 @@ fn main() {
         let rx_blacklist_filter = opt.rx_blacklist_filter.map(|filter| {
             RegexBuilder::new(&filter)
                 .case_insensitive(true)
+                .ignore_whitespace(true)
                 .multi_line(true)
                 .dot_matches_new_line(true)
                 .build()
@@ -184,30 +187,33 @@ fn main() {
 
         // Now spawn the thread for performing the Rx'ing
         thread::spawn(move || {
-            // If you dont want it to print Rx packets. 
+            // If you dont want it to print Rx packets.
             // Kill the thread via -c 0
             let now = Instant::now();
             while rx_countlimit != 0 {
                 match rx.next() {
                     Ok(packet) => {
-                        // Format the packet into a nice hex format
-                        use hexplay::HexViewBuilder;
-                        let view = HexViewBuilder::new(packet).row_width(16).finish();
+                        // Convert the bytes into a basic hex string so that regex filters
+                        // are easy to write for it
+                        let packetString = hex::encode(packet);
 
                         // Match the whitelist if set
                         if let Some(rx_filter) = &rx_filter {
-                            if !rx_filter.is_match(&format!("{}", view)) {
+                            if !rx_filter.is_match(&format!("{}", packetString)) {
                                 continue;
                             }
                         }
                         // Do not match the blackist if set
                         if let Some(rx_blacklist_filter) = &rx_blacklist_filter {
-                            if rx_blacklist_filter.is_match(&format!("{}", view)) {
+                            if rx_blacklist_filter.is_match(&format!("{}", packetString)) {
                                 continue;
                             }
                         }
-                        // Print the packet
-                        println!("Recv Packet\n{}", view);
+                        // Format the packet into a nice hex format
+                        info!(
+                            "Recv Packet\n{}",
+                            HexViewBuilder::new(packet).row_width(16).finish()
+                        );
                         rx_countlimit -= 1;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
