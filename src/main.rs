@@ -6,14 +6,15 @@ extern crate pbr;
 extern crate pnet;
 extern crate regex;
 
+mod filter;
+use filter::RxFilter;
+
 use hex::FromHex;
-use hexplay::HexViewBuilder;
 use log::Level::Info;
 use log::{debug, error, info, log_enabled};
 use pbr::ProgressBar;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, Config, NetworkInterface};
-use regex::RegexBuilder;
 use structopt::StructOpt;
 
 use std::io;
@@ -163,27 +164,9 @@ fn main() {
         // Start of the Rx scope. First convert the users settings
         let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
         let mut rx_countlimit = opt.rx_count;
-        let rx_filter = opt.rx_filter.map(|filter| {
-            RegexBuilder::new(&filter)
-                .case_insensitive(true)
-                .ignore_whitespace(true)
-                .multi_line(true)
-                .dot_matches_new_line(true)
-                .build()
-                .expect("Invalid Regex")
-        });
-        debug!("Whitelist is: {:?}", rx_filter);
-        let rx_blacklist_filter = opt.rx_blacklist_filter.map(|filter| {
-            RegexBuilder::new(&filter)
-                .case_insensitive(true)
-                .ignore_whitespace(true)
-                .multi_line(true)
-                .dot_matches_new_line(true)
-                .build()
-                .expect("Invalid Regex")
-        });
-        debug!("Blacklist is: {:?}", rx_blacklist_filter);
         let wg = wg.clone();
+
+        let rx_filter = RxFilter::create(opt.rx_filter, opt.rx_blacklist_filter);
 
         // Now spawn the thread for performing the Rx'ing
         thread::spawn(move || {
@@ -193,28 +176,13 @@ fn main() {
             while rx_countlimit != 0 {
                 match rx.next() {
                     Ok(packet) => {
-                        // Convert the bytes into a basic hex string so that regex filters
-                        // are easy to write for it
-                        let hex_string = hex::encode(packet);
+                        debug!("Rx'd a packet!");
 
-                        // Match the whitelist if set
-                        if let Some(rx_filter) = &rx_filter {
-                            if !rx_filter.is_match(&hex_string.to_string()) {
-                                continue;
-                            }
-                        }
-                        // Do not match the blackist if set
-                        if let Some(rx_blacklist_filter) = &rx_blacklist_filter {
-                            if rx_blacklist_filter.is_match(&hex_string.to_string()) {
-                                continue;
-                            }
-                        }
-                        // Format the packet into a nice hex format
-                        info!(
-                            "Recv Packet\n{}",
-                            HexViewBuilder::new(packet).row_width(16).finish()
-                        );
-                        rx_countlimit -= 1;
+                        // Filter the packet
+                        if let Some(output) = rx_filter.filter(packet) {
+                            info!("\n{}", output);
+                            rx_countlimit -= 1;
+                        };
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
                         // Timeout errors are fine

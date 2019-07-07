@@ -6,7 +6,8 @@ os:
   - linux
 
 script: 
-  ./CompileBinaries.sh
+  - cargo test
+  - ./CompileBinaries.sh
 
 deploy:
   provider: releases
