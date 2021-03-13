@@ -2,7 +2,6 @@
 A small rust utility for dumping data-layer network traffic
 
 [![Build Status](https://travis-ci.org/JackNewman12/NetHex.svg?branch=master)](https://travis-ci.org/JackNewman12/NetHex)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_shield)
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 ```
@@ -80,7 +79,3 @@ As of v0.5.0 most of the printing has been turned into an env_logger. While the 
 LOG=DEBUG ./nethex .........
 LOG=WARN  ./nethex .........
 ```
-
-
-## License
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FJackNewman12%2FNetHex?ref=badge_large)
