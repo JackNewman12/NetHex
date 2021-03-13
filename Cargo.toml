@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 hexplay = "*"
-hex = "0.3.2"
+hex = "0.4.3"
 structopt = "0.2"
 regex = "1.1.7"
 crossbeam-utils = "0.6"
