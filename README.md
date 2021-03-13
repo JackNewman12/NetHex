@@ -6,36 +6,37 @@ A small rust utility for dumping data-layer network traffic
 
 ```
 ./net_hex --help
-NetHex 0.7.0
-Jack Newman jacknewman12@gmail.com
+NetHex 0.8.0
 A small utility for reading / writing directly to a network interface
 
 USAGE:
-    net_hex [OPTIONS] [ARGS]
+    net_hex [FLAGS] [OPTIONS] [ARGS]
 
 FLAGS:
     -h, --help       Prints help information
+    -R, --raw        Raw Hex Printing
+    -S, --stdin      Inject Hex Packets from File
     -V, --version    Prints version information
 
 OPTIONS:
-    -b, --blacklist <rx_blacklist_filter>    Only print Rx packets that do NOT match this regex filter
-    -c, --count <rx_count>                   Number of packet to receive before exiting [default: -1]
-    -f, --filter <rx_filter>                 Only print Rx packets that match this regex filter
-    -t, --timeout <rx_timeout>               Time to receive for before exiting
-    -r, --rate <tx_rate>                     Rate to transmit (Packets Per Second)
-    -s, --send <tx_send>                     Number of packet to transmit [default: 1]
+    -b, --blacklist <rx-blacklist-filter>    Only print Rx packets that do NOT match this regex filter
+    -c, --count <rx-count>                   Number of packet to receive before exiting [default: -1]
+    -f, --filter <rx-filter>                 Only print Rx packets that match this regex filter
+    -t, --timeout <rx-timeout>               Time to receive for before exiting
+    -F, --file <tx-file>                     Inject Hex Packets from File
+    -r, --rate <tx-rate>                     Rate to transmit (Packets Per Second)
+    -s, --send <tx-send>                     Number of packet to transmit [default: 1]
 
 ARGS:
     <interface>    The network interface to use
     <bytes>        The hex bytes to send over the network
-
-
 ```
 
 
 ## Sending a packet
 ```
 ./net_hex eth0 112233445566778899AABBCCDDEEFF -c 0 -s 100 -r 50
+100 / 100 [============================================] 100.00 % 50.49/s 
 Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
 Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
 Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
@@ -45,8 +46,17 @@ Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
 * `--send 100` send 100 of these packets
 * `--rate 50` send 50 per second
 
+### Sending from File or Stdin
+```
+cat mydata.txt | ./net_hex eth0 -c 0 --stdin
+```
+* `--stdin` will pipe any hex strings into the network interface, newline seperated
+Useful for fuzz testing a network interface / device
 
-Followed by a hex string of the bytes to transmit.
+```
+./net_hex eth0 -c 0 --file mydata.txt
+```
+* `--file` will pipe any hex strings from a file into the network interface, newline seperated
 
 ## Monitoring an network interface
 ```
