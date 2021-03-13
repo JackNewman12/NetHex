@@ -60,14 +60,14 @@ impl RxFilter {
 
             // Match the whitelist if set
             if let Some(rx_filter) = &self.rx_filter {
-                if !rx_filter.is_match(&hex_string.to_string()) {
+                if !rx_filter.is_match(&hex_string) {
                     debug!("Killed by whitelist");
                     return None;
                 }
             }
             // Do not match the blackist if set
             if let Some(rx_blacklist_filter) = &self.rx_blacklist_filter {
-                if rx_blacklist_filter.is_match(&hex_string.to_string()) {
+                if rx_blacklist_filter.is_match(&hex_string) {
                     debug!("Killed by blacklist");
                     return None;
                 }

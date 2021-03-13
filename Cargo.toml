@@ -9,17 +9,17 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hexplay = "*"
-hex = "0.3.2"
-structopt = "0.2"
+hexplay = "0.2.1"
+hex = "0.4.3"
+structopt = "0.3"
 regex = "1.1.7"
-crossbeam-utils = "0.6"
+crossbeam-utils = "0.8"
 log = { version = "0.4.6", features = ["max_level_trace", "release_max_level_debug"] }
-env_logger = "0.6.1"
+env_logger = "0.8.3"
 pbr = "1.0.1"
 
 [dependencies.pnet]
-version = "0.22.0"
+version = "0.27.2"
 
 [profile.release]
 lto = true

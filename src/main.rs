@@ -10,16 +10,17 @@ mod filter;
 use filter::RxFilter;
 
 use hex::FromHex;
+use io::stdin;
 use log::Level::Info;
 use log::{debug, error, info, log_enabled};
 use pbr::ProgressBar;
 use pnet::datalink::Channel::Ethernet;
-use pnet::datalink::{self, Config, NetworkInterface};
+use pnet::datalink::{self, NetworkInterface};
 use structopt::StructOpt;
 
-use std::io;
-use std::thread;
 use std::time::{Duration, Instant};
+use std::{io, path::PathBuf};
+use std::{io::BufRead, thread};
 
 fn print_interfaces() {
     println!("Detected Network Interfaces:");
@@ -35,7 +36,7 @@ fn print_interfaces() {
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "NetHex",
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
+    setting = structopt::clap::AppSettings::ColoredHelp
 )]
 /// A small utility for reading / writing directly to a network interface
 struct Opt {
@@ -62,6 +63,18 @@ struct Opt {
     /// Rate to transmit (Packets Per Second)
     #[structopt(short = "r", long = "rate")]
     tx_rate: Option<f64>,
+
+    /// Raw Hex Printing
+    #[structopt(short = "R", long = "raw")]
+    rawprint: bool,
+
+    /// Inject Hex Packets from File
+    #[structopt(short = "F", long = "file")]
+    tx_file: Option<PathBuf>,
+
+    /// Inject Hex Packets from File
+    #[structopt(short = "S", long = "stdin")]
+    tx_stdin: bool,
 
     /// The network interface to use
     #[structopt(name = "interface")]
@@ -98,8 +111,9 @@ fn main() {
     debug!("{:#?}", interface);
 
     // Set the timeout of the socket read to 10ms
-    let mut datalink_config = Config::default();
-    datalink_config.read_timeout = Some(Duration::from_millis(10));
+    let datalink_config = datalink::Config { 
+        read_timeout: Some(Duration::from_millis(10)), 
+        ..Default::default() };
 
     // Create a new channel, dealing with layer 2 packets
     let (mut tx, mut rx) = match datalink::channel(&interface, datalink_config) {
@@ -111,58 +125,87 @@ fn main() {
     // Progressing to rx and tx steps. Add a waitgroup for them
     let wg = crossbeam_utils::sync::WaitGroup::new();
 
-    // Decode the hex input if the user specified one
-    if let Some(arg) = opt.bytes {
-        let bytes = match Vec::from_hex(arg) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                error!("{}", e);
-                std::process::exit(1);
+    {
+        let mut perform_tx = true;
+
+        let mut bytes: Vec<Vec<u8>> = Default::default();
+        if let Some(path) = opt.tx_file {
+            // Get the file data
+            let file = std::fs::File::open(path).expect("Could not open file");
+            let reader = io::BufReader::new(file);
+            for line in reader.lines() {
+                let line = line.expect("Could not decode line in file");
+                bytes.push(Vec::from_hex(line).expect("Could parse line as hex string"));
             }
-        };
-        info!("Input bytes: {:X?}", bytes);
-
-        let rate = opt.tx_rate;
-        let count = opt.tx_send;
-        let wg = wg.clone();
-        thread::spawn(move || {
-            // Transmit those bytes
-
-            // Create some tickers for sending bytes + updating the progress bar
-            let rate = rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
-            let mut progress_bar = ProgressBar::new(count);
-            if log_enabled!(Info) {
-                progress_bar.set(0);
-                progress_bar.set_max_refresh_rate(Some(Duration::from_millis(500)));
+        } else if opt.tx_stdin {
+            // Print from stdin
+            let stdin = stdin();
+            let stdinbuf = stdin.lock().lines();
+            for line in stdinbuf {
+                let line = line.expect("Failed to read stdin");
+                let data = Vec::from_hex(line).expect("Could not decode stdin as hex string");
             }
+            panic!("Not implemented yet!");
+        } else if let Some(data) = opt.bytes {
+            // Grab the bytes from the command line
+            let data = Vec::from_hex(data).expect("Could not decode string to hex data");
+            bytes.push(data);
+        } else {
+            debug!("No Tx settings detected");
+            perform_tx = false;
+        }
 
-            let mut now = Instant::now();
-            for idx in 0..count {
-                debug!("Sending Packet!");
-                let res = tx.send_to(&bytes, None).unwrap();
-                if let Err(error) = res {
-                    error!("{:?}", error);
-                    std::process::exit(1);
-                };
+        debug!("Byte Vec: {:?}", bytes);
 
+        if perform_tx {
+            let rate = opt.tx_rate;
+            let count = opt.tx_send;
+            let wg = wg.clone();
+            thread::spawn(move || {
+                // Transmit those bytes
+
+                // Create some tickers for sending bytes + updating the progress bar
+                let rate = rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
+                let mut progress_bar = ProgressBar::new(count);
                 if log_enabled!(Info) {
-                    progress_bar.set(idx);
+                    progress_bar.set(0);
+                    progress_bar.set_max_refresh_rate(Some(Duration::from_millis(500)));
                 }
-                if let Some(rate) = rate {
-                    if let Some(sleep) = rate.checked_sub(now.elapsed()) {
-                        thread::sleep(sleep);
+
+                let mut now = Instant::now();
+                for idx in 0..count {
+                    debug!("Tx Loop Count {}", idx);
+                    for bytes in &bytes {
+                        debug!("Sending Packet!");
+                        let res = tx.send_to(&bytes, None).unwrap();
+                        if let Err(error) = res {
+                            error!("{:?}", error);
+                            std::process::exit(1);
+                        };
+
+                        if log_enabled!(Info) {
+                            progress_bar.set(idx);
+                        }
+                        if let Some(rate) = rate {
+                            if let Some(sleep) = rate.checked_sub(now.elapsed()) {
+                                thread::sleep(sleep);
+                            }
+                            now += rate;
+                        };
                     }
-                    now += rate;
-                };
-            }
-            progress_bar.finish();
-            drop(wg);
-        });
+                }
+                if log_enabled!(Info) {
+                    progress_bar.finish();
+                }
+                drop(wg);
+            });
+        }
     }
 
     {
         // Start of the Rx scope. First convert the users settings
         let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
+        let rawprint = opt.rawprint;
         let mut rx_countlimit = opt.rx_count;
         let wg = wg.clone();
 
@@ -180,7 +223,11 @@ fn main() {
 
                         // Filter the packet
                         if let Some(output) = rx_filter.filter(packet) {
-                            info!("\n{}", output);
+                            if rawprint {
+                                println!("{}", hex::encode(packet));
+                            } else {
+                                info!("\n{}", output);
+                            }
                             rx_countlimit -= 1;
                         };
                     }
