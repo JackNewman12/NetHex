@@ -1,0 +1,61 @@
+name: Rust
+
+on: 
+  push:
+  pull_request:
+  release:
+    types: [published]
+
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [x86_64-unknown-linux-musl, arm-unknown-linux-musleabihf]
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        default: true
+        components: clippy
+
+    - uses: actions-rs/clippy-check@v1
+      name: Clippy
+      with:
+          use-cross: true
+          name: clippy-${{ matrix.os }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --target ${{ matrix.os }}
+
+    - name: Build Binary
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target ${{ matrix.os }} --release
+
+    - name: Save Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: nethex-${{ matrix.os }}
+        path: target/${{ matrix.os }}/release/net_hex
+        
+
+    - name: Upload binary
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+          asset_name: nethex-${{ matrix.os }}
+          asset_path: target/${{ matrix.os }}/release/net_hex
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_content_type: application/octet-stream
+
+    
