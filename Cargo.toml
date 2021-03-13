@@ -1,5 +1,7 @@
+cargo-features = ["strip"]
+
 [package]
-name = "net_hex"
+name = "nethex"
 version = "0.8.1-alpha.0"
 authors = ["Jack Newman jacknewman12@gmail.com"]
 edition = "2018"
@@ -25,3 +27,4 @@ version = "0.27.2"
 lto = true
 codegen-units = 1
 panic = 'abort'
+strip = "symbols"

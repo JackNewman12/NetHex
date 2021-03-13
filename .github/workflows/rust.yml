@@ -44,7 +44,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: nethex-${{ matrix.os }}
-        path: target/${{ matrix.os }}/release/net_hex
+        path: target/${{ matrix.os }}/release/nethex
         
 
     - name: Upload binary
@@ -54,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
           asset_name: nethex-${{ matrix.os }}
-          asset_path: target/${{ matrix.os }}/release/net_hex
+          asset_path: target/${{ matrix.os }}/release/nethex
           upload_url: ${{ github.event.release.upload_url }}
           asset_content_type: application/octet-stream
 

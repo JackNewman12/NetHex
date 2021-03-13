@@ -20,9 +20,4 @@ Cargo.lock
 /target
 #**/*.rs.bk
 
-
-# The built binaries
-net_hex_arm
-net_hex_x64
-
 .vscode
