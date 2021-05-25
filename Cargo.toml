@@ -14,14 +14,14 @@ publish = false
 hexplay = "0.2.1"
 hex = "0.4.3"
 structopt = "0.3"
-regex = "1.1.7"
+regex = "1.5"
 crossbeam = "0.8.0"
-log = { version = "0.4.6", features = ["max_level_trace", "release_max_level_debug"] }
+log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 env_logger = "0.8.3"
-pbr = "1.0.1"
+indicatif="0.16"
 
 [dependencies.pnet]
-version = "0.27.2"
+version = "0.28"
 
 [profile.release]
 lto = true
