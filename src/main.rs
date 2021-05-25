@@ -2,7 +2,6 @@ extern crate env_logger;
 extern crate hex;
 extern crate hexplay;
 extern crate log;
-extern crate pbr;
 extern crate pnet;
 extern crate regex;
 
@@ -12,10 +11,11 @@ use filter::RxFilter;
 use hex::FromHex;
 use io::stdin;
 use log::{debug, error, info};
-use pbr::{PbIter};
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, NetworkInterface};
 use structopt::StructOpt;
+
+use indicatif::ProgressStyle;
 
 use std::time::{Duration, Instant};
 use std::{io, path::PathBuf};
@@ -124,7 +124,6 @@ fn main() {
     // Progressing to rx and tx steps. Add a waitgroup for them
     let wg = crossbeam::sync::WaitGroup::new();
 
-
     // Start of the Rx scope. First convert the users settings
     {
         let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
@@ -184,9 +183,10 @@ fn main() {
         let tx_file = opt.tx_file;
         let tx_stdin = opt.tx_stdin;
         let cmdbytes = opt.bytes;
+        let iscmdbytes: bool = cmdbytes.is_some();
         let wg = wg.clone();
 
-        let (s, r) = crossbeam::channel::bounded::<Vec<u8>>(64);
+        let (s, r) = crossbeam::channel::bounded::<Vec<u8>>(256);
 
         // A thread for processing whatever input we have
         thread::spawn(move || {
@@ -220,13 +220,38 @@ fn main() {
         // A thread for transmitting those bytes
         thread::spawn(move || {
             // Create some tickers for sending bytes + updating the progress bar
-            let rate: Option<Duration> = rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
+            let rate: Option<Duration> =
+                rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
             let mut now = Instant::now();
 
-            for bytes in &r {
+            let filebar = indicatif::ProgressBar::new(r.len() as u64).with_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}"));
+            if iscmdbytes {
+                // Dont load this progress bar if we are doing a command-line input
+                filebar.finish_and_clear();
+            }
+            for bytes in r.iter() {
+                filebar.inc(1);
+                let nextlength = filebar.position() + r.len() as u64;
+                if (nextlength - filebar.length()) > 10 {
+                    // Having file or stdin inputs can give us wonkey ETAs. Reset on large jumps
+                    filebar.reset_eta();
+                }
+                filebar.set_length(filebar.position() + r.len() as u64);
+
                 debug!("Sending Packet!");
-                for idx in PbIter::new(0..count) {
+
+                let loopbar = indicatif::ProgressBar::new(count).with_style(
+                    ProgressStyle::default_bar()
+                        .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}"));
+                if count == 1 {
+                    loopbar.finish_and_clear();
+                }
+
+                for idx in 0..count {
                     debug!("Tx Loop Count {}", idx);
+                    loopbar.set_position(idx);
 
                     let res = tx.send_to(&bytes, None).unwrap();
                     if let Err(error) = res {
