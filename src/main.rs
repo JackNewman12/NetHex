@@ -84,7 +84,6 @@ struct Opt {
     bytes: Option<String>,
 }
 
-// Invoke as echo <interface name>
 fn main() {
     let mut builder =
         env_logger::Builder::from_env(env_logger::Env::new().filter_or("LOG", "INFO"));
@@ -187,7 +186,7 @@ fn main() {
         let cmdbytes = opt.bytes;
         let wg = wg.clone();
 
-        let (s, r) = crossbeam::channel::unbounded::<Vec<u8>>();
+        let (s, r) = crossbeam::channel::bounded::<Vec<u8>>(64);
 
         // A thread for processing whatever input we have
         thread::spawn(move || {
