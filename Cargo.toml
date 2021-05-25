@@ -2,7 +2,7 @@ cargo-features = ["strip"]
 
 [package]
 name = "nethex"
-version = "0.8.2-alpha.0"
+version = "0.8.2"
 authors = ["Jack Newman jacknewman12@gmail.com"]
 edition = "2018"
 license = "MIT"
