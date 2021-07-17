@@ -13,15 +13,13 @@ publish = false
 [dependencies]
 hexplay = "0.2.1"
 hex = "0.4.3"
-structopt = "0.3"
-regex = "1.5"
-crossbeam = "0.8.0"
-log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
-env_logger = "0.8.3"
-indicatif="0.16"
-
-[dependencies.pnet]
-version = "0.28"
+structopt = "0.3.22"
+regex = "1.5.4"
+crossbeam = "0.8.1"
+log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_debug"] }
+env_logger = "0.9.0"
+indicatif= "0.16.2"
+pnet = "0.28.0"
 
 [profile.release]
 lto = true
