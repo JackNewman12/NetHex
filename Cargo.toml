@@ -17,7 +17,7 @@ crossbeam = "0.8.2"
 log = { version = "0.4.17", features = ["max_level_trace", "release_max_level_debug"] }
 env_logger = "0.9.1"
 indicatif= "0.17.1"
-pnet = "0.30.0"
+pnet = "0.31.0"
 
 [profile.release]
 lto = true
