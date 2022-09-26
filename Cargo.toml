@@ -1,6 +1,6 @@
 [package]
 name = "nethex"
-version = "0.8.3"
+version = "0.8.4-alpha.1"
 authors = ["Jack Newman jacknewman12@gmail.com"]
 edition = "2021"
 license = "MIT"
