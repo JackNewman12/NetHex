@@ -1,10 +1,8 @@
-cargo-features = ["strip"]
-
 [package]
 name = "nethex"
 version = "0.8.3-alpha.0"
 authors = ["Jack Newman jacknewman12@gmail.com"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 publish = false
 
@@ -13,13 +11,13 @@ publish = false
 [dependencies]
 hexplay = "0.2.1"
 hex = "0.4.3"
-structopt = "0.3.22"
-regex = "1.5.4"
-crossbeam = "0.8.1"
-log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_debug"] }
-env_logger = "0.9.0"
-indicatif= "0.16.2"
-pnet = "0.28.0"
+structopt = "0.3.26"
+regex = "1.6.0"
+crossbeam = "0.8.2"
+log = { version = "0.4.17", features = ["max_level_trace", "release_max_level_debug"] }
+env_logger = "0.9.1"
+indicatif= "0.17.1"
+pnet = "0.30.0"
 
 [profile.release]
 lto = true

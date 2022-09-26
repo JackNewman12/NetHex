@@ -226,7 +226,7 @@ fn main() {
 
             let filebar = indicatif::ProgressBar::new(r.len() as u64).with_style(
                 ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}"));
+                    .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap());
             if iscmdbytes {
                 // Dont load this progress bar if we are doing a command-line input
                 filebar.finish_and_clear();
@@ -234,7 +234,7 @@ fn main() {
             for bytes in r.iter() {
                 filebar.inc(1);
                 let nextlength = filebar.position() + r.len() as u64;
-                if (nextlength - filebar.length()) > 10 {
+                if (nextlength - filebar.length().unwrap_or(nextlength)) > 10 {
                     // Having file or stdin inputs can give us wonkey ETAs. Reset on large jumps
                     filebar.reset_eta();
                 }
@@ -244,7 +244,7 @@ fn main() {
 
                 let loopbar = indicatif::ProgressBar::new(count).with_style(
                     ProgressStyle::default_bar()
-                        .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}"));
+                        .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap());
                 if count == 1 {
                     loopbar.finish_and_clear();
                 }
