@@ -13,7 +13,7 @@ use io::stdin;
 use log::{debug, error, info};
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, NetworkInterface};
-use structopt::StructOpt;
+use clap::Parser;
 
 use indicatif::ProgressStyle;
 
@@ -32,55 +32,52 @@ fn print_interfaces() {
     }
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(
-    name = "NetHex",
-    setting = structopt::clap::AppSettings::ColoredHelp
-)]
+#[derive(Parser, Debug)]
+#[command(name = "NetHex", version, allow_negative_numbers = true)]
 /// A small utility for reading / writing directly to a network interface
 struct Opt {
     /// Number of packet to receive before exiting
-    #[structopt(short = "c", long = "count", default_value = "-1")]
+    #[arg(short = 'c', long = "count", default_value = "-1")]
     rx_count: i64,
 
     /// Time to receive for before exiting
-    #[structopt(short = "t", long = "timeout")]
+    #[arg(short = 't', long = "timeout")]
     rx_timeout: Option<u64>,
 
     /// Only print Rx packets that match this regex filter
-    #[structopt(short = "f", long = "filter")]
+    #[arg(short = 'f', long = "filter")]
     rx_filter: Option<String>,
 
     /// Only print Rx packets that do NOT match this regex filter
-    #[structopt(short = "b", long = "blacklist")]
+    #[arg(short = 'b', long = "blacklist")]
     rx_blacklist_filter: Option<String>,
 
     /// Number of packet to transmit
-    #[structopt(short = "s", long = "send", default_value = "1")]
+    #[arg(short = 's', long = "send", default_value = "1")]
     tx_send: u64,
 
     /// Rate to transmit (Packets Per Second)
-    #[structopt(short = "r", long = "rate")]
+    #[arg(short = 'r', long = "rate")]
     tx_rate: Option<f64>,
 
     /// Raw Hex Printing
-    #[structopt(short = "R", long = "raw")]
+    #[arg(short = 'R', long = "raw")]
     rawprint: bool,
 
     /// Inject Hex Packets from File
-    #[structopt(short = "F", long = "file")]
+    #[arg(short = 'F', long = "file")]
     tx_file: Option<PathBuf>,
 
     /// Inject Hex Packets from File
-    #[structopt(short = "S", long = "stdin")]
+    #[arg(short = 'S', long = "stdin")]
     tx_stdin: bool,
 
     /// The network interface to use
-    #[structopt(name = "interface")]
+    #[arg(value_name = "interface")]
     interface: Option<String>,
 
     /// The hex bytes to send over the network
-    #[structopt(name = "bytes")]
+    #[arg(value_name = "bytes")]
     bytes: Option<String>,
 }
 
@@ -90,7 +87,7 @@ fn main() {
     builder.target(env_logger::fmt::Target::Stdout);
     builder.init();
 
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     debug!("\n{:#?}", opt);
 
     // If the user did not specify any interface. List some to be helpful
