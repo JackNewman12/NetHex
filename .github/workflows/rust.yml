@@ -1,61 +1,56 @@
 name: Rust
 
-on: 
+on:
   push:
   pull_request:
   release:
     types: [published]
 
-
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Test
+      run: cargo test
+
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
-        os: [x86_64-unknown-linux-musl, arm-unknown-linux-musleabihf]
+        target: [x86_64-unknown-linux-musl, arm-unknown-linux-musleabihf]
 
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v5
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: nightly
-        default: true
         components: clippy
-
-    - uses: actions-rs/clippy-check@v1
-      name: Clippy
+    - uses: taiki-e/install-action@v2
       with:
-          use-cross: true
-          name: clippy-${{ matrix.os }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --target ${{ matrix.os }}
+        tool: cross
+
+    - name: Clippy
+      run: cross clippy --all-features --target ${{ matrix.target }}
 
     - name: Build Binary
-      uses: actions-rs/cargo@v1
-      with:
-          use-cross: true
-          command: build
-          args: --target ${{ matrix.os }} --release
+      run: |
+        cross build --target ${{ matrix.target }} --release
+        cp target/${{ matrix.target }}/release/nethex nethex-${{ matrix.target }}
 
     - name: Save Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: nethex-${{ matrix.os }}
-        path: target/${{ matrix.os }}/release/nethex
-        
+        name: nethex-${{ matrix.target }}
+        path: nethex-${{ matrix.target }}
 
     - name: Upload binary
       if: github.event_name == 'release'
-      uses: actions/upload-release-asset@v1
-      env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-          asset_name: nethex-${{ matrix.os }}
-          asset_path: target/${{ matrix.os }}/release/nethex
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_content_type: application/octet-stream
-
-    
+        files: nethex-${{ matrix.target }}
