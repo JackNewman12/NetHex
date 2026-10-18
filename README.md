@@ -6,30 +6,26 @@ A small rust utility for dumping data-layer network traffic
 
 ```
 ./nethex --help
-NetHex 0.8.0
 A small utility for reading / writing directly to a network interface
 
-USAGE:
-    nethex [FLAGS] [OPTIONS] [ARGS]
+Usage: nethex [OPTIONS] [interface] [bytes]
 
-FLAGS:
-    -h, --help       Prints help information
-    -R, --raw        Raw Hex Printing
-    -S, --stdin      Inject Hex Packets from File
-    -V, --version    Prints version information
+Arguments:
+  [interface]  The network interface to use
+  [bytes]      The hex bytes to send over the network
 
-OPTIONS:
-    -b, --blacklist <rx-blacklist-filter>    Only print Rx packets that do NOT match this regex filter
-    -c, --count <rx-count>                   Number of packet to receive before exiting [default: -1]
-    -f, --filter <rx-filter>                 Only print Rx packets that match this regex filter
-    -t, --timeout <rx-timeout>               Time to receive for before exiting
-    -F, --file <tx-file>                     Inject Hex Packets from File
-    -r, --rate <tx-rate>                     Rate to transmit (Packets Per Second)
-    -s, --send <tx-send>                     Number of packet to transmit [default: 1]
-
-ARGS:
-    <interface>    The network interface to use
-    <bytes>        The hex bytes to send over the network
+Options:
+  -c, --count <RX_COUNT>                 Number of packet to receive before exiting [default: -1]
+  -t, --timeout <RX_TIMEOUT>             Time to receive for before exiting
+  -f, --filter <RX_FILTER>               Only print Rx packets that match this regex filter
+  -b, --blacklist <RX_BLACKLIST_FILTER>  Only print Rx packets that do NOT match this regex filter
+  -s, --send <TX_SEND>                   Number of packet to transmit [default: 1]
+  -r, --rate <TX_RATE>                   Rate to transmit (Packets Per Second)
+  -R, --raw                              Raw Hex Printing
+  -F, --file <TX_FILE>                   Inject Hex Packets from File
+  -S, --stdin                            Inject Hex Packets from stdin
+  -h, --help                             Print help
+  -V, --version                          Print version
 ```
 
 
@@ -50,7 +46,7 @@ Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
 ```
 cat mydata.txt | ./nethex eth0 -c 0 --stdin
 ```
-* `--stdin` will pipe any hex strings into the network interface, newline seperated
+* `--stdin` will pipe any hex strings into the network interface, newline seperated. Whitespace within a line and blank lines are ignored
 Useful for fuzz testing a network interface / device
 
 ```
