@@ -1,25 +1,22 @@
-extern crate env_logger;
-extern crate hex;
-extern crate hexplay;
-extern crate log;
-extern crate pnet;
-extern crate regex;
-
 mod filter;
 use filter::RxFilter;
 
-use hex::FromHex;
-use io::stdin;
-use log::{debug, error, info};
-use pnet::datalink::Channel::Ethernet;
-use pnet::datalink::{self, NetworkInterface};
 use clap::Parser;
+use hexplay::HexViewBuilder;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, info};
+use pnet::datalink::{self, Channel::Ethernet};
 
-use indicatif::ProgressStyle;
-
+use std::io::{self, BufRead};
+use std::path::PathBuf;
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{io, path::PathBuf};
-use std::{io::BufRead, thread};
+
+// For user-facing errors. A panic would abort with a core dump in release builds
+fn die(msg: impl std::fmt::Display) -> ! {
+    eprintln!("Error: {}", msg);
+    std::process::exit(1);
+}
 
 fn print_interfaces() {
     println!("Detected Network Interfaces:");
@@ -30,6 +27,15 @@ fn print_interfaces() {
             println!("  IP: {}", ipaddr);
         }
     }
+}
+
+// Whitespace inside the hex is ignored. A blank line gives None
+fn parse_line(line: &str) -> Result<Option<Vec<u8>>, hex::FromHexError> {
+    let line: String = line.split_whitespace().collect();
+    if line.is_empty() {
+        return Ok(None);
+    }
+    hex::decode(line).map(Some)
 }
 
 #[derive(Parser, Debug)]
@@ -57,19 +63,19 @@ struct Opt {
     tx_send: u64,
 
     /// Rate to transmit (Packets Per Second)
-    #[arg(short = 'r', long = "rate")]
-    tx_rate: Option<f64>,
+    #[arg(short = 'r', long = "rate", value_parser = clap::value_parser!(u64).range(1..))]
+    tx_rate: Option<u64>,
 
     /// Raw Hex Printing
     #[arg(short = 'R', long = "raw")]
     rawprint: bool,
 
     /// Inject Hex Packets from File
-    #[arg(short = 'F', long = "file")]
+    #[arg(short = 'F', long = "file", conflicts_with_all = ["tx_stdin", "bytes"])]
     tx_file: Option<PathBuf>,
 
-    /// Inject Hex Packets from File
-    #[arg(short = 'S', long = "stdin")]
+    /// Inject Hex Packets from stdin
+    #[arg(short = 'S', long = "stdin", conflicts_with = "bytes")]
     tx_stdin: bool,
 
     /// The network interface to use
@@ -91,19 +97,19 @@ fn main() {
     debug!("\n{:#?}", opt);
 
     // If the user did not specify any interface. List some to be helpful
-    if opt.interface.is_none() {
+    let Some(name) = opt.interface else {
         print_interfaces();
-        std::process::exit(0);
+        return;
     };
 
     // Find the network interface with the provided name
-    let interfaces = datalink::interfaces();
-    let interface = interfaces
+    let interface = datalink::interfaces()
         .into_iter()
-        // Safe to unwrap since print_interfaces will exit above
-        .find(|iface: &NetworkInterface| iface.name == *opt.interface.as_ref().unwrap())
-        .expect("Could not find the network interface");
+        .find(|iface| iface.name == name)
+        .unwrap_or_else(|| die(format!("Could not find the network interface {}", name)));
     debug!("{:#?}", interface);
+
+    let rx_filter = RxFilter::create(opt.rx_filter, opt.rx_blacklist_filter);
 
     // Set the timeout of the socket read to 10ms
     let datalink_config = datalink::Config {
@@ -114,21 +120,18 @@ fn main() {
     // Create a new channel, dealing with layer 2 packets
     let (mut tx, mut rx) = match datalink::channel(&interface, datalink_config) {
         Ok(Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!("Error while creating datalink channel: {:?}", e),
+        Ok(_) => die("Unhandled channel type"),
+        Err(e) => die(format!(
+            "Could not open {}: {} (needs root or CAP_NET_RAW)",
+            name, e
+        )),
     };
 
-    // Progressing to rx and tx steps. Add a waitgroup for them
-    let wg = crossbeam::sync::WaitGroup::new();
-
     // Start of the Rx scope. First convert the users settings
-    {
+    let rx_thread = {
         let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
         let rawprint = opt.rawprint;
         let mut rx_countlimit = opt.rx_count;
-        let wg = wg.clone();
-
-        let rx_filter = RxFilter::create(opt.rx_filter, opt.rx_blacklist_filter);
 
         // Now spawn the thread for performing the Rx'ing
         thread::spawn(move || {
@@ -140,12 +143,11 @@ fn main() {
                     Ok(packet) => {
                         debug!("Rx'd a packet!");
 
-                        // Filter the packet
-                        if let Some(output) = rx_filter.filter(packet) {
+                        if rx_filter.matches(packet) {
                             if rawprint {
                                 println!("{}", hex::encode(packet));
                             } else {
-                                info!("\n{}", output);
+                                info!("\n{}", HexViewBuilder::new(packet).row_width(16).finish());
                             }
                             rx_countlimit -= 1;
                         };
@@ -154,80 +156,69 @@ fn main() {
                         // Timeout errors are fine
                         // Pass
                     }
-                    Err(e) => {
-                        // If any other error occurs, we can handle it here
-                        panic!("An error occurred while reading: {:?}", e);
-                    }
+                    Err(e) => die(format!("An error occurred while reading: {}", e)),
                 }
 
-                // If there is a timeout enabled. Check it
-                // TDB if this moves to it's own thread so it works for both Tx and Rx
+                // Only stop receiving. Any Tx still in progress finishes
                 if let Some(rx_timeout) = rx_timeout {
                     if now.elapsed() > rx_timeout {
                         debug!("Rx time limit reached!");
-                        std::process::exit(0);
+                        break;
                     }
                 }
             }
-            drop(wg);
-        });
-    }
+        })
+    };
 
     // The Transmit Worker Section
-    {
-        let rate = opt.tx_rate;
+    let tx_thread = {
+        let rate = opt.tx_rate.map(|r| Duration::from_nanos(1_000_000_000 / r));
         let count = opt.tx_send;
         let tx_file = opt.tx_file;
         let tx_stdin = opt.tx_stdin;
         let cmdbytes = opt.bytes;
         let iscmdbytes: bool = cmdbytes.is_some();
-        let wg = wg.clone();
 
-        let (s, r) = crossbeam::channel::bounded::<Vec<u8>>(256);
+        let (s, r) = crossbeam_channel::bounded::<Vec<u8>>(256);
 
         // A thread for processing whatever input we have
         thread::spawn(move || {
-            if let Some(path) = tx_file {
-                // Get the file data
-                let file = std::fs::File::open(path).expect("Could not open file");
-                let reader = io::BufReader::new(file);
-                for line in reader.lines() {
-                    let line = line.expect("Could not decode line in file");
-                    let data = Vec::from_hex(line).expect("Could parse line as hex string");
-                    s.send(data).expect("crossbeam send failed!");
-                }
+            let reader: Box<dyn BufRead> = if let Some(path) = tx_file {
+                let file = std::fs::File::open(&path).unwrap_or_else(|e| {
+                    die(format!("Could not open file {}: {}", path.display(), e))
+                });
+                Box::new(io::BufReader::new(file))
             } else if tx_stdin {
-                // Print from stdin
-                let stdin = stdin();
-                let stdinbuf = stdin.lock().lines();
-                for line in stdinbuf {
-                    let line = line.expect("Failed to read stdin");
-                    let data = Vec::from_hex(line).expect("Could not decode stdin as hex string");
-                    s.send(data).expect("crossbeam send failed!");
-                }
+                Box::new(io::stdin().lock())
             } else if let Some(data) = cmdbytes {
-                // Grab the bytes from the command line
-                let data = Vec::from_hex(data).expect("Could not decode string to hex data");
-                s.send(data).expect("crossbeam send failed!");
+                Box::new(io::Cursor::new(data))
             } else {
                 debug!("No Tx settings detected");
+                return;
+            };
+            for (idx, line) in reader.lines().enumerate() {
+                let line =
+                    line.unwrap_or_else(|e| die(format!("Could not read line {}: {}", idx + 1, e)));
+                match parse_line(&line) {
+                    Ok(Some(data)) => s.send(data).expect("crossbeam send failed!"),
+                    Ok(None) => debug!("Skipping blank line {}", idx + 1),
+                    Err(e) => die(format!("Line {} is not a valid hex string: {}", idx + 1, e)),
+                }
             }
         });
 
         // A thread for transmitting those bytes
         thread::spawn(move || {
-            // Create some tickers for sending bytes + updating the progress bar
-            let rate: Option<Duration> =
-                rate.map(|rate| Duration::from_micros((1e6 / rate) as u64));
             let mut now = Instant::now();
 
-            let filebar = indicatif::ProgressBar::new(r.len() as u64).with_style(
-                ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap());
-            if iscmdbytes {
-                // Dont load this progress bar if we are doing a command-line input
-                filebar.finish_and_clear();
-            }
+            // Dont show this progress bar if we are doing a command-line input
+            let filebar = if iscmdbytes {
+                ProgressBar::hidden()
+            } else {
+                ProgressBar::new(r.len() as u64).with_style(
+                    ProgressStyle::default_bar()
+                        .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap())
+            };
             for bytes in r.iter() {
                 filebar.inc(1);
                 let nextlength = filebar.position() + r.len() as u64;
@@ -235,26 +226,25 @@ fn main() {
                     // Having file or stdin inputs can give us wonkey ETAs. Reset on large jumps
                     filebar.reset_eta();
                 }
-                filebar.set_length(filebar.position() + r.len() as u64);
+                filebar.set_length(nextlength);
 
                 debug!("Sending Packet!");
 
-                let loopbar = indicatif::ProgressBar::new(count).with_style(
-                    ProgressStyle::default_bar()
-                        .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap());
-                if count == 1 {
-                    loopbar.finish_and_clear();
-                }
+                let loopbar = if count == 1 {
+                    ProgressBar::hidden()
+                } else {
+                    ProgressBar::new(count).with_style(
+                        ProgressStyle::default_bar()
+                            .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap())
+                };
 
                 for idx in 0..count {
                     debug!("Tx Loop Count {}", idx);
-                    loopbar.set_position(idx);
 
-                    let res = tx.send_to(&bytes, None).unwrap();
-                    if let Err(error) = res {
-                        error!("{:?}", error);
-                        std::process::exit(1);
+                    if let Some(Err(error)) = tx.send_to(&bytes, None) {
+                        die(format!("Could not send packet: {}", error));
                     };
+                    loopbar.inc(1);
 
                     if let Some(rate) = rate {
                         if let Some(sleep) = rate.checked_sub(now.elapsed()) {
@@ -263,9 +253,25 @@ fn main() {
                         now += rate;
                     };
                 }
+                loopbar.finish();
             }
-            drop(wg);
-        });
+        })
+    };
+
+    rx_thread.join().expect("Rx thread panicked");
+    tx_thread.join().expect("Tx thread panicked");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_line() {
+        assert_eq!(parse_line("").unwrap(), None);
+        assert_eq!(parse_line("  \t").unwrap(), None);
+        assert_eq!(parse_line("AA bb\tCC").unwrap(), Some(vec![0xAA, 0xBB, 0xCC]));
+        assert!(parse_line("zz").is_err());
+        assert!(parse_line("ABC").is_err());
     }
-    wg.wait();
 }
