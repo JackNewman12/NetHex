@@ -15,13 +15,14 @@ Arguments:
   [bytes]      The hex bytes to send over the network
 
 Options:
-  -c, --count <RX_COUNT>                 Number of packet to receive before exiting [default: -1]
-  -t, --timeout <RX_TIMEOUT>             Time to receive for before exiting
+  -c, --count <RX_COUNT>                 Packets to receive before exiting [default: no limit]
+  -t, --timeout <RX_TIMEOUT>             Seconds to receive for. Fails if --count is not reached
   -f, --filter <RX_FILTER>               Only print Rx packets that match this regex filter
   -b, --blacklist <RX_BLACKLIST_FILTER>  Only print Rx packets that do NOT match this regex filter
   -s, --send <TX_SEND>                   Number of packet to transmit [default: 1]
   -r, --rate <TX_RATE>                   Rate to transmit (Packets Per Second)
   -R, --raw                              Raw Hex Printing
+  -T, --time                             Raw Hex Printing with timestamps
   -F, --file <TX_FILE>                   Inject Hex Packets from File
   -S, --stdin                            Inject Hex Packets from stdin
   -h, --help                             Print help
@@ -49,6 +50,13 @@ Useful for fuzz testing a network interface / device
 ./nethex eth0 -c 0 --file mydata.txt
 ```
 * `--file` will pipe any hex strings from a file into the network interface, newline separated
+* Anything after a `#` is a comment
+* `??` in place of a byte sends a new random byte every time, e.g. `ffffffffffff 020000000001 88b5 ?? ??`
+
+To replay a pcap (needs `tshark` and `jq`):
+```
+tshark -r capture.pcap -T json -x | jq -r '.[]._source.layers.frame_raw[0]' | ./nethex eth0 -c 0 --stdin
+```
 
 ## Monitoring a network interface
 ```
@@ -60,6 +68,11 @@ Useful for fuzz testing a network interface / device
 ```
 * `--count 1` only grab one packet before exiting
 * `--raw` print each packet as a single hex string instead
+* `--time` same as `--raw`, with the seconds since start in front: `0.301025 ffffffffffff...`
+
+### Scripting
+`./nethex eth0 -c 3 -t 0.5` exits with code 1 if 3 packets did not arrive within half a second.
+A `Sent N packets, received M` summary goes to stderr on exit.
 
 ### Filtering
 Whitelist and blacklist filtering can be applied to the hex data. The filter is performed on the hex string only, not the ASCII area.
