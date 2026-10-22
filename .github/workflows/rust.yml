@@ -46,7 +46,7 @@ jobs:
         cp target/${{ matrix.target }}/release/nethex nethex-${{ matrix.target }}
 
     - name: Save Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: nethex-${{ matrix.target }}
         path: nethex-${{ matrix.target }}
