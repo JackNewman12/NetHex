@@ -1,5 +1,5 @@
 use clap::Parser;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use log::{debug, info};
 use pnet_datalink::{self as datalink, Channel::Ethernet};
 use pretty_hex::{config_hex, HexConfig};
@@ -112,6 +112,10 @@ struct Opt {
     /// Inject Hex Packets from stdin
     #[arg(short = 'S', long = "stdin", conflicts_with = "bytes")]
     tx_stdin: bool,
+
+    /// Hide progress bars
+    #[arg(short = 'p', long = "plain")]
+    plain: bool,
 
     /// The network interface to use
     #[arg(value_name = "interface")]
@@ -226,6 +230,7 @@ fn main() {
         let tx_stdin = opt.tx_stdin;
         let cmdbytes = opt.bytes;
         let show_filebar = tx_file.is_some() || tx_stdin;
+        let plain = opt.plain;
 
         thread::spawn(move || {
             let reader: Box<dyn BufRead> = if let Some(path) = tx_file {
@@ -247,6 +252,9 @@ fn main() {
 
             // Stacks the file and loop bars on separate lines instead of both drawing over one line
             let bars = MultiProgress::new();
+            if plain {
+                bars.set_draw_target(ProgressDrawTarget::hidden());
+            }
             // The file length is unknown up front, so this bar only counts
             let filebar = if show_filebar {
                 let style =

@@ -25,6 +25,7 @@ Options:
   -T, --time                             Raw Hex Printing with timestamps
   -F, --file <TX_FILE>                   Inject Hex Packets from File
   -S, --stdin                            Inject Hex Packets from stdin
+  -p, --plain                            Hide progress bars
   -h, --help                             Print help
   -V, --version                          Print version
 ```
