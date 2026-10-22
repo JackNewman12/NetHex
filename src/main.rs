@@ -1,11 +1,9 @@
-mod filter;
-use filter::RxFilter;
-
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, info};
 use pnet_datalink::{self as datalink, Channel::Ethernet};
 use pretty_hex::{config_hex, HexConfig};
+use regex::{Regex, RegexBuilder};
 
 use std::io::{self, BufRead};
 use std::path::PathBuf;
@@ -29,26 +27,59 @@ fn print_interfaces() {
     }
 }
 
-// Whitespace inside the hex is ignored. A blank line gives None
-fn parse_line(line: &str) -> Result<Option<Vec<u8>>, hex::FromHexError> {
+// A packet's bytes plus the offsets that get a fresh random byte on every send
+type Packet = (Vec<u8>, Vec<usize>);
+
+// Whitespace inside the hex and anything after a '#' is ignored. A blank line gives None.
+// "??" in place of a byte means random
+fn parse_line(line: &str) -> Result<Option<Packet>, hex::FromHexError> {
+    let line = line.split('#').next().unwrap_or_default();
     let line: String = line.split_whitespace().collect();
     if line.is_empty() {
         return Ok(None);
     }
-    hex::decode(line).map(Some)
+    let (mut bytes, mut random) = (vec![], vec![]);
+    for (i, pair) in line.as_bytes().chunks(2).enumerate() {
+        if pair == b"??" {
+            random.push(i);
+            bytes.push(0);
+        } else {
+            bytes.extend(hex::decode(pair)?);
+        }
+    }
+    Ok(Some((bytes, random)))
+}
+
+// Filters match against the packet as a hex string, ignoring case and whitespace
+fn build_filter(filter: String) -> Regex {
+    RegexBuilder::new(&filter)
+        .case_insensitive(true)
+        .ignore_whitespace(true)
+        .build()
+        .unwrap_or_else(|e| die(format!("Invalid regex filter:\n{}", e)))
+}
+
+// True if the packet matches the whitelist (when set) and not the blacklist (when set)
+fn passes(whitelist: &Option<Regex>, blacklist: &Option<Regex>, packet: &[u8]) -> bool {
+    if whitelist.is_none() && blacklist.is_none() {
+        return true;
+    }
+    let hex = hex::encode(packet);
+    whitelist.as_ref().is_none_or(|r| r.is_match(&hex))
+        && !blacklist.as_ref().is_some_and(|r| r.is_match(&hex))
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "NetHex", version, allow_negative_numbers = true)]
+#[command(name = "NetHex", version)]
 /// A small utility for reading / writing directly to a network interface
 struct Opt {
-    /// Number of packet to receive before exiting
-    #[arg(short = 'c', long = "count", default_value = "-1")]
-    rx_count: i64,
+    /// Packets to receive before exiting [default: no limit]
+    #[arg(short = 'c', long = "count")]
+    rx_count: Option<u64>,
 
-    /// Time to receive for before exiting
+    /// Seconds to receive for. Fails if --count is not reached
     #[arg(short = 't', long = "timeout")]
-    rx_timeout: Option<u64>,
+    rx_timeout: Option<f64>,
 
     /// Only print Rx packets that match this regex filter
     #[arg(short = 'f', long = "filter")]
@@ -69,6 +100,10 @@ struct Opt {
     /// Raw Hex Printing
     #[arg(short = 'R', long = "raw")]
     rawprint: bool,
+
+    /// Raw Hex Printing with timestamps
+    #[arg(short = 'T', long = "time")]
+    timestamp: bool,
 
     /// Inject Hex Packets from File
     #[arg(short = 'F', long = "file", conflicts_with_all = ["tx_stdin", "bytes"])]
@@ -109,7 +144,11 @@ fn main() {
         .unwrap_or_else(|| die(format!("Could not find the network interface {}", name)));
     debug!("{:#?}", interface);
 
-    let rx_filter = RxFilter::create(opt.rx_filter, opt.rx_blacklist_filter);
+    let whitelist = opt.rx_filter.map(build_filter);
+    let blacklist = opt.rx_blacklist_filter.map(build_filter);
+    let rx_timeout = opt.rx_timeout.map(|t| {
+        Duration::try_from_secs_f64(t).unwrap_or_else(|e| die(format!("Bad timeout: {}", e)))
+    });
 
     // Set the timeout of the socket read to 10ms
     let datalink_config = datalink::Config {
@@ -129,9 +168,9 @@ fn main() {
 
     // Start of the Rx scope. First convert the users settings
     let rx_thread = {
-        let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
+        let rx_count = opt.rx_count;
         let rawprint = opt.rawprint;
-        let mut rx_countlimit = opt.rx_count;
+        let timestamp = opt.timestamp;
         let hex_config = HexConfig {
             title: false,
             width: 16,
@@ -144,18 +183,22 @@ fn main() {
             // If you dont want it to print Rx packets.
             // Kill the thread via -c 0
             let now = Instant::now();
-            while rx_countlimit != 0 {
+            let mut received: u64 = 0;
+            while rx_count.is_none_or(|c| received < c) {
                 match rx.next() {
                     Ok(packet) => {
                         debug!("Rx'd a packet!");
 
-                        if rx_filter.matches(packet) {
-                            if rawprint {
+                        if passes(&whitelist, &blacklist, packet) {
+                            if timestamp {
+                                let secs = now.elapsed().as_secs_f64();
+                                println!("{:.6} {}", secs, hex::encode(packet));
+                            } else if rawprint {
                                 println!("{}", hex::encode(packet));
                             } else {
                                 info!("\n{}", config_hex(&packet, hex_config));
                             }
-                            rx_countlimit -= 1;
+                            received += 1;
                         };
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
@@ -171,6 +214,7 @@ fn main() {
                     break;
                 }
             }
+            received
         })
     };
 
@@ -181,17 +225,8 @@ fn main() {
         let tx_file = opt.tx_file;
         let tx_stdin = opt.tx_stdin;
         let cmdbytes = opt.bytes;
-        // Bars only make sense when there is something to send
         let show_filebar = tx_file.is_some() || tx_stdin;
-        let sending = show_filebar || cmdbytes.is_some();
 
-        let style = ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}")
-            .unwrap();
-
-        let (s, r) = crossbeam_channel::bounded::<Vec<u8>>(256);
-
-        // A thread for processing whatever input we have
         thread::spawn(move || {
             let reader: Box<dyn BufRead> = if let Some(path) = tx_file {
                 let file = std::fs::File::open(&path).unwrap_or_else(|e| {
@@ -204,54 +239,56 @@ fn main() {
                 Box::new(io::Cursor::new(data))
             } else {
                 debug!("No Tx settings detected");
-                return;
+                return 0;
             };
-            for (idx, line) in reader.lines().enumerate() {
-                let line =
-                    line.unwrap_or_else(|e| die(format!("Could not read line {}: {}", idx + 1, e)));
-                match parse_line(&line) {
-                    Ok(Some(data)) => s.send(data).expect("crossbeam send failed!"),
-                    Ok(None) => debug!("Skipping blank line {}", idx + 1),
-                    Err(e) => die(format!("Line {} is not a valid hex string: {}", idx + 1, e)),
-                }
-            }
-        });
 
-        // A thread for transmitting those bytes
-        thread::spawn(move || {
             let mut now = Instant::now();
+            let mut sent: u64 = 0;
 
             // Stacks the file and loop bars on separate lines instead of both drawing over one line
             let bars = MultiProgress::new();
+            // The file length is unknown up front, so this bar only counts
             let filebar = if show_filebar {
-                bars.add(ProgressBar::new(r.len() as u64).with_style(style.clone()))
+                let style =
+                    ProgressStyle::with_template("[{elapsed_precise}] {pos:>7} lines {per_sec:6}");
+                bars.add(ProgressBar::no_length().with_style(style.unwrap()))
             } else {
                 ProgressBar::hidden()
             };
-            let loopbar = if sending && count != 1 {
-                bars.add(ProgressBar::new(count).with_style(style))
+            let loopbar = if count != 1 {
+                let style = ProgressStyle::with_template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}");
+                bars.add(ProgressBar::new(count).with_style(style.unwrap()))
             } else {
                 ProgressBar::hidden()
             };
-            for bytes in r.iter() {
+
+            for (idx, line) in reader.lines().enumerate() {
+                let line =
+                    line.unwrap_or_else(|e| die(format!("Could not read line {}: {}", idx + 1, e)));
+                let (mut bytes, random) = match parse_line(&line) {
+                    Ok(Some(packet)) => packet,
+                    Ok(None) => {
+                        debug!("Skipping blank line {}", idx + 1);
+                        continue;
+                    }
+                    Err(e) => die(format!("Line {} is not a valid hex string: {}", idx + 1, e)),
+                };
                 filebar.inc(1);
-                let nextlength = filebar.position() + r.len() as u64;
-                if (nextlength - filebar.length().unwrap_or(nextlength)) > 10 {
-                    // Having file or stdin inputs can give us wonkey ETAs. Reset on large jumps
-                    filebar.reset_eta();
-                }
-                filebar.set_length(nextlength);
 
                 debug!("Sending Packet!");
                 loopbar.reset();
 
                 for idx in 0..count {
                     debug!("Tx Loop Count {}", idx);
+                    for &i in &random {
+                        bytes[i] = fastrand::u8(..);
+                    }
 
                     if let Some(Err(error)) = tx.send_to(&bytes, None) {
                         die(format!("Could not send packet: {}", error));
                     };
                     loopbar.inc(1);
+                    sent += 1;
 
                     if let Some(rate) = rate {
                         if let Some(sleep) = rate.checked_sub(now.elapsed()) {
@@ -263,11 +300,19 @@ fn main() {
             }
             filebar.finish();
             loopbar.finish();
+            sent
         })
     };
 
-    rx_thread.join().expect("Rx thread panicked");
-    tx_thread.join().expect("Tx thread panicked");
+    let received = rx_thread.join().expect("Rx thread panicked");
+    let sent = tx_thread.join().expect("Tx thread panicked");
+    eprintln!("Sent {} packets, received {}", sent, received);
+    if let Some(count) = opt.rx_count.filter(|&c| received < c) {
+        die(format!(
+            "Timed out after receiving {} of {} packets",
+            received, count
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -280,9 +325,47 @@ mod tests {
         assert_eq!(parse_line("  \t").unwrap(), None);
         assert_eq!(
             parse_line("AA bb\tCC").unwrap(),
-            Some(vec![0xAA, 0xBB, 0xCC])
+            Some((vec![0xAA, 0xBB, 0xCC], vec![]))
         );
         assert!(parse_line("zz").is_err());
         assert!(parse_line("ABC").is_err());
+        // Comments
+        assert_eq!(parse_line("# only a comment").unwrap(), None);
+        assert_eq!(
+            parse_line("aabb # arp").unwrap(),
+            Some((vec![0xAA, 0xBB], vec![]))
+        );
+        // Random bytes only count on a byte boundary, so "a??b" is not one
+        assert_eq!(
+            parse_line("aa ?? bb ??").unwrap(),
+            Some((vec![0xAA, 0, 0xBB, 0], vec![1, 3]))
+        );
+        assert!(parse_line("a??b").is_err());
+        assert!(parse_line("a?").is_err());
+    }
+
+    #[test]
+    fn test_filters() {
+        let f = |s: &str| Some(build_filter(s.to_string()));
+
+        // Whitelist only. Whitespace and case in the filter are ignored
+        let white = f("00 11 2A");
+        assert!(passes(&white, &None, &[0x00, 0x11, 0x2a, 4, 5]));
+        assert!(!passes(&white, &None, &[1, 2, 3, 4, 5]));
+        assert!(!passes(&white, &None, &[0x00, 0x11]));
+
+        // Blacklist only
+        let black = f("123456");
+        assert!(!passes(&None, &black, &[0x33, 0x12, 0x34, 0x56, 0x78]));
+        assert!(passes(&None, &black, &[0x56, 0x34, 0x12]));
+
+        // Both
+        let (white, black) = (f("12"), f("65"));
+        assert!(!passes(&white, &black, &[0x34, 0x56]));
+        assert!(!passes(&white, &black, &[0x12, 0x65]));
+        assert!(passes(&white, &black, &[0x34, 0x56, 0x12]));
+
+        // No filters
+        assert!(passes(&None, &None, &[1, 2, 3]));
     }
 }
