@@ -32,11 +32,7 @@ Options:
 ## Sending a packet
 ```
 ./nethex eth0 112233445566778899AABBCCDDEEFF -c 0 -s 100 -r 50
-100 / 100 [============================================] 100.00 % 50.49/s 
-Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
-Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
-Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
-.. etc ..
+[00:00:02] ███████████████████████████     100/100     100% 49.997221/s 00:00:00
 ```
 * `--count 0` to not listen after transmitting
 * `--send 100` send 100 of these packets
@@ -46,24 +42,24 @@ Sending bytes: [11, 22, 33, 44, 55, 66, 77, 88, 99, AA, BB, CC, DD, EE, FF]
 ```
 cat mydata.txt | ./nethex eth0 -c 0 --stdin
 ```
-* `--stdin` will pipe any hex strings into the network interface, newline seperated. Whitespace within a line and blank lines are ignored
+* `--stdin` will pipe any hex strings into the network interface, newline separated. Whitespace within a line and blank lines are ignored
 Useful for fuzz testing a network interface / device
 
 ```
 ./nethex eth0 -c 0 --file mydata.txt
 ```
-* `--file` will pipe any hex strings from a file into the network interface, newline seperated
+* `--file` will pipe any hex strings from a file into the network interface, newline separated
 
-## Monitoring an network interface
+## Monitoring a network interface
 ```
 ./nethex eth0 -c 1
------ Recv Packet -----
-00000000  2A 1E 5F B3 8E E3 1A 8C 8C E9 2B 00 08 00 45 00  | *▲_│Ä∏→îîθ+.◘.E. |
-00000010  00 28 CB 09 40 00 31 06 2C 45 B9 15 D8 A5 C0 A8  | .(╦○@.1♠,E╣§╪Ñ└¿ |
-00000020  00 1E F3 B1 D5 CD A7 29 7E 51 D6 F6 B7 DE 50 10  | .▲≤▒╒═º)~Q╕÷╖▐P► |
-00000030  00 80 DF 02 00 00       
+[2026-10-22T11:30:05Z INFO  nethex] 
+    0000:   ff ff ff ff ff ff 02 00 00 00 00 01 88 b5 de ad   ................
+    0010:   be ef 00 11 22 33 44 55 66 77 88 99 aa bb cc dd   ...."3DUfw......
+    0020:   ee ff                                             ..
 ```
 * `--count 1` only grab one packet before exiting
+* `--raw` print each packet as a single hex string instead
 
 ### Filtering
 Whitelist and blacklist filtering can be applied to the hex data. The filter is performed on the hex string only, not the ASCII area.
@@ -73,14 +69,13 @@ Whitespace and newlines are ignored in the filter.
 * `--blacklist "123456ABC"` Must not contain this hex data
 ```
  ./nethex lo -f "77 77 88889999 AA" -c 1
-[2019-06-30T08:17:24Z INFO  nethex] Recv Packet
-00000000  11 11 22 22 33 33 44 44 55 55 66 66 77 77 88 88  | ◄◄""33DDUUffwwêê |
-00000010  99 99 AA AA BB BB CC CC DD DD EE EE FF FF        | ÖÖ¬¬╗╗╠╠▌▌εε..   |
-
+[2026-10-22T11:30:47Z INFO  nethex] 
+    0000:   11 11 22 22 33 33 44 44 55 55 66 66 77 77 88 88   ..""33DDUUffww..
+    0010:   99 99 aa aa bb bb cc cc dd dd ee ee ff ff         ..............
 ```
 
 ## Logging
-As of v0.5.0 most of the printing has been turned into an env_logger. While the debugging features are nice, disabling prints allows for a large 20x performance bonus. Logging can be enabled/disable using an enviroment variable. 
+As of v0.5.0 most of the printing has been turned into an env_logger. While the debugging features are nice, disabling prints allows for a large 20x performance bonus. Logging can be enabled/disable using an environment variable. 
 ```
 LOG=DEBUG ./nethex .........
 LOG=WARN  ./nethex .........
