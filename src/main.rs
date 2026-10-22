@@ -2,10 +2,10 @@ mod filter;
 use filter::RxFilter;
 
 use clap::Parser;
-use hexplay::HexViewBuilder;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, info};
-use pnet::datalink::{self, Channel::Ethernet};
+use pnet_datalink::{self as datalink, Channel::Ethernet};
+use pretty_hex::{config_hex, HexConfig};
 
 use std::io::{self, BufRead};
 use std::path::PathBuf;
@@ -132,6 +132,12 @@ fn main() {
         let rx_timeout = opt.rx_timeout.map(Duration::from_secs);
         let rawprint = opt.rawprint;
         let mut rx_countlimit = opt.rx_count;
+        let hex_config = HexConfig {
+            title: false,
+            width: 16,
+            group: 0,
+            ..Default::default()
+        };
 
         // Now spawn the thread for performing the Rx'ing
         thread::spawn(move || {
@@ -147,7 +153,7 @@ fn main() {
                             if rawprint {
                                 println!("{}", hex::encode(packet));
                             } else {
-                                info!("\n{}", HexViewBuilder::new(packet).row_width(16).finish());
+                                info!("\n{}", config_hex(&packet, hex_config));
                             }
                             rx_countlimit -= 1;
                         };
@@ -160,11 +166,9 @@ fn main() {
                 }
 
                 // Only stop receiving. Any Tx still in progress finishes
-                if let Some(rx_timeout) = rx_timeout {
-                    if now.elapsed() > rx_timeout {
-                        debug!("Rx time limit reached!");
-                        break;
-                    }
+                if rx_timeout.is_some_and(|t| now.elapsed() > t) {
+                    debug!("Rx time limit reached!");
+                    break;
                 }
             }
         })
@@ -177,7 +181,13 @@ fn main() {
         let tx_file = opt.tx_file;
         let tx_stdin = opt.tx_stdin;
         let cmdbytes = opt.bytes;
-        let iscmdbytes: bool = cmdbytes.is_some();
+        // Bars only make sense when there is something to send
+        let show_filebar = tx_file.is_some() || tx_stdin;
+        let sending = show_filebar || cmdbytes.is_some();
+
+        let style = ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}")
+            .unwrap();
 
         let (s, r) = crossbeam_channel::bounded::<Vec<u8>>(256);
 
@@ -211,13 +221,17 @@ fn main() {
         thread::spawn(move || {
             let mut now = Instant::now();
 
-            // Dont show this progress bar if we are doing a command-line input
-            let filebar = if iscmdbytes {
-                ProgressBar::hidden()
+            // Stacks the file and loop bars on separate lines instead of both drawing over one line
+            let bars = MultiProgress::new();
+            let filebar = if show_filebar {
+                bars.add(ProgressBar::new(r.len() as u64).with_style(style.clone()))
             } else {
-                ProgressBar::new(r.len() as u64).with_style(
-                    ProgressStyle::default_bar()
-                        .template("[{elapsed_precise}] {wide_bar:.cyan} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap())
+                ProgressBar::hidden()
+            };
+            let loopbar = if sending && count != 1 {
+                bars.add(ProgressBar::new(count).with_style(style))
+            } else {
+                ProgressBar::hidden()
             };
             for bytes in r.iter() {
                 filebar.inc(1);
@@ -229,14 +243,7 @@ fn main() {
                 filebar.set_length(nextlength);
 
                 debug!("Sending Packet!");
-
-                let loopbar = if count == 1 {
-                    ProgressBar::hidden()
-                } else {
-                    ProgressBar::new(count).with_style(
-                        ProgressStyle::default_bar()
-                            .template("[{elapsed_precise}] {wide_bar:.green} {pos:>7}/{len:7} {percent:>3}% {per_sec:6} {eta_precise}").unwrap())
-                };
+                loopbar.reset();
 
                 for idx in 0..count {
                     debug!("Tx Loop Count {}", idx);
@@ -253,8 +260,9 @@ fn main() {
                         now += rate;
                     };
                 }
-                loopbar.finish();
             }
+            filebar.finish();
+            loopbar.finish();
         })
     };
 
@@ -270,7 +278,10 @@ mod tests {
     fn test_parse_line() {
         assert_eq!(parse_line("").unwrap(), None);
         assert_eq!(parse_line("  \t").unwrap(), None);
-        assert_eq!(parse_line("AA bb\tCC").unwrap(), Some(vec![0xAA, 0xBB, 0xCC]));
+        assert_eq!(
+            parse_line("AA bb\tCC").unwrap(),
+            Some(vec![0xAA, 0xBB, 0xCC])
+        );
         assert!(parse_line("zz").is_err());
         assert!(parse_line("ABC").is_err());
     }
